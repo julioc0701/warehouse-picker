@@ -4,6 +4,7 @@ import SessionSelect from './pages/SessionSelect'
 import SessionItems from './pages/SessionItems'
 import Picking from './pages/Picking'
 import Supervisor from './pages/Supervisor'
+import MasterData from './pages/MasterData'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/sessions/:sessionId/items" element={<SessionItems />} />
         <Route path="/picking/:sessionId" element={<Picking />} />
         <Route path="/supervisor" element={<Supervisor />} />
+        <Route path="/master-data" element={<MasterData />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>
