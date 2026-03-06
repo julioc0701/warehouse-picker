@@ -40,10 +40,16 @@ async def import_excel(
             skipped += 1
             continue
 
+        # If EAN equals SKU, treat it as a SKU-alias (is_primary=False), not a real barcode
+        ean_is_real = ean != sku
+
         if ean not in existing:
-            db.add(Barcode(barcode=ean, sku=sku, is_primary=True))
+            db.add(Barcode(barcode=ean, sku=sku, is_primary=ean_is_real))
             existing.add(ean)
-            added += 1
+            if ean_is_real:
+                added += 1
+            else:
+                skipped += 1
         else:
             skipped += 1
 
@@ -69,14 +75,20 @@ def list_barcodes(
     search: str = Query(default="", description="Filtrar por SKU ou código de barras"),
     limit: int = Query(default=200, le=2000),
 ):
-    q = db.query(Barcode).filter(Barcode.is_primary == True)
+    q = db.query(Barcode).filter(
+        Barcode.is_primary == True,
+        Barcode.barcode != Barcode.sku,  # exclude SKU-alias entries
+    )
     if search:
         like = f"%{search}%"
         q = q.filter(
             (Barcode.sku.ilike(like)) | (Barcode.barcode.ilike(like))
         )
     rows = q.order_by(Barcode.sku).limit(limit).all()
-    total = db.query(Barcode).filter(Barcode.is_primary == True).count()
+    total = db.query(Barcode).filter(
+        Barcode.is_primary == True,
+        Barcode.barcode != Barcode.sku,
+    ).count()
     return {
         "total": total,
         "results": len(rows),
