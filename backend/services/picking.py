@@ -88,6 +88,7 @@ def process_scan_box(
     session_id: int,
     barcode: str,
     operator_id: int,
+    focus_sku: str | None = None,
 ) -> dict:
     """
     Box mode scan: one scan marks the entire required quantity as picked.
@@ -106,7 +107,8 @@ def process_scan_box(
         return {"status": "unknown_barcode", "barcode": barcode, "sku": sku}
 
     current = get_current_item(db, session_id)
-    if current and current.sku != sku:
+    in_focus_mode = focus_sku is not None and focus_sku == sku
+    if current and current.sku != sku and not in_focus_mode:
         return {
             "status": "wrong_sku",
             "scanned_sku": sku,

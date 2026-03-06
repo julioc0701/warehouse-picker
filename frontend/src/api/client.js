@@ -36,8 +36,8 @@ export const api = {
   // Picking actions
   scan: (sessionId, barcode, operatorId, focusSku = null) =>
     req('POST', `/sessions/${sessionId}/scan`, { barcode, operator_id: operatorId, focus_sku: focusSku }),
-  scanBox: (sessionId, barcode, operatorId) =>
-    req('POST', `/sessions/${sessionId}/scan-box`, { barcode, operator_id: operatorId }),
+  scanBox: (sessionId, barcode, operatorId, focusSku = null) =>
+    req('POST', `/sessions/${sessionId}/scan-box`, { barcode, operator_id: operatorId, focus_sku: focusSku }),
   undo: (sessionId, sku, operatorId) =>
     req('POST', `/sessions/${sessionId}/undo`, { sku, operator_id: operatorId }),
   shortage: (sessionId, sku, qtyFound, operatorId) =>

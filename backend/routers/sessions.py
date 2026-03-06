@@ -214,7 +214,7 @@ def scan(session_id: int, body: ScanBody, db: DBSession = Depends(get_db)):
 def scan_box(session_id: int, body: ScanBody, db: DBSession = Depends(get_db)):
     """Box mode: one scan marks the full required quantity as picked."""
     _session_or_404(db, session_id)
-    result = svc.process_scan_box(db, session_id, body.barcode, body.operator_id)
+    result = svc.process_scan_box(db, session_id, body.barcode, body.operator_id, body.focus_sku)
     result["progress"] = svc.session_progress(db, session_id)
     return result
 
