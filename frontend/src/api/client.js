@@ -34,8 +34,8 @@ export const api = {
   reopenSession: (sessionId) => req('POST', `/sessions/${sessionId}/reopen-session`),
 
   // Picking actions
-  scan: (sessionId, barcode, operatorId) =>
-    req('POST', `/sessions/${sessionId}/scan`, { barcode, operator_id: operatorId }),
+  scan: (sessionId, barcode, operatorId, focusSku = null) =>
+    req('POST', `/sessions/${sessionId}/scan`, { barcode, operator_id: operatorId, focus_sku: focusSku }),
   scanBox: (sessionId, barcode, operatorId) =>
     req('POST', `/sessions/${sessionId}/scan-box`, { barcode, operator_id: operatorId }),
   undo: (sessionId, sku, operatorId) =>

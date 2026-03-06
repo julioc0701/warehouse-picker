@@ -199,12 +199,13 @@ def list_items(session_id: int, db: DBSession = Depends(get_db)):
 class ScanBody(BaseModel):
     barcode: str
     operator_id: int
+    focus_sku: str | None = None
 
 
 @router.post("/{session_id}/scan")
 def scan(session_id: int, body: ScanBody, db: DBSession = Depends(get_db)):
     _session_or_404(db, session_id)
-    result = svc.process_scan(db, session_id, body.barcode, body.operator_id)
+    result = svc.process_scan(db, session_id, body.barcode, body.operator_id, body.focus_sku)
     result["progress"] = svc.session_progress(db, session_id)
     return result
 

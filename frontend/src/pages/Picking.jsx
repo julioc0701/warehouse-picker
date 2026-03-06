@@ -101,7 +101,7 @@ export default function Picking() {
     try {
       const res = scanMode === 'box'
         ? await api.scanBox(sessionId, code, operator.id)
-        : await api.scan(sessionId, code, operator.id)
+        : await api.scan(sessionId, code, operator.id, focusSku || null)
 
       updateFromResponse(res, code)
 

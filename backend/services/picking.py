@@ -28,6 +28,7 @@ def process_scan(
     session_id: int,
     barcode: str,
     operator_id: int,
+    focus_sku: str | None = None,
 ) -> dict:
     """
     Main scan handler. Returns a result dict with status and updated item state.
@@ -49,8 +50,11 @@ def process_scan(
 
     current = get_current_item(db, session_id)
 
-    # Scanned a different SKU than what's expected
-    if current and current.sku != sku:
+    # Scanned a different SKU than what's expected.
+    # Skip this check in focus mode: if the operator explicitly chose to scan
+    # this SKU (focus_sku), allow it even if it's not the first pending item.
+    in_focus_mode = focus_sku is not None and focus_sku == sku
+    if current and current.sku != sku and not in_focus_mode:
         return {
             "status": "wrong_sku",
             "scanned_sku": sku,
