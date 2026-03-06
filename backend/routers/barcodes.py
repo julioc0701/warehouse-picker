@@ -64,6 +64,21 @@ def resolve_barcode(barcode: str = Query(...), db: DBSession = Depends(get_db)):
 
 
 @router.get("/")
-def list_barcodes(db: DBSession = Depends(get_db)):
-    rows = db.query(Barcode).order_by(Barcode.sku).all()
-    return [{"barcode": b.barcode, "sku": b.sku, "is_primary": b.is_primary} for b in rows]
+def list_barcodes(
+    db: DBSession = Depends(get_db),
+    search: str = Query(default="", description="Filtrar por SKU ou código de barras"),
+    limit: int = Query(default=200, le=2000),
+):
+    q = db.query(Barcode).filter(Barcode.is_primary == True)
+    if search:
+        like = f"%{search}%"
+        q = q.filter(
+            (Barcode.sku.ilike(like)) | (Barcode.barcode.ilike(like))
+        )
+    rows = q.order_by(Barcode.sku).limit(limit).all()
+    total = db.query(Barcode).filter(Barcode.is_primary == True).count()
+    return {
+        "total": total,
+        "results": len(rows),
+        "items": [{"barcode": b.barcode, "sku": b.sku} for b in rows],
+    }

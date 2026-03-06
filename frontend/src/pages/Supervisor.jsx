@@ -28,6 +28,10 @@ export default function Supervisor() {
   const [excelFile, setExcelFile] = useState(null)
   const [excelResult, setExcelResult] = useState(null)
   const [importingExcel, setImportingExcel] = useState(false)
+  const [showBarcodes, setShowBarcodes] = useState(false)
+  const [barcodeData, setBarcodeData] = useState(null)
+  const [barcodeSearch, setBarcodeSearch] = useState('')
+  const [loadingBarcodes, setLoadingBarcodes] = useState(false)
 
   useEffect(() => { refresh() }, [])
 
@@ -79,11 +83,43 @@ export default function Supervisor() {
       fd.append('file', excelFile)
       const res = await api.importBarcodesExcel(fd)
       setExcelResult({ ok: true, msg: `✔ ${res.added} EANs importados, ${res.skipped} já existiam` })
+      // Refresh barcode viewer if open
+      if (showBarcodes) loadBarcodes(barcodeSearch)
     } catch (err) {
       setExcelResult({ ok: false, msg: err.message })
     } finally {
       setImportingExcel(false)
     }
+  }
+
+  async function loadBarcodes(search = '') {
+    setLoadingBarcodes(true)
+    try {
+      const res = await api.listBarcodes(search)
+      setBarcodeData(res)
+    } catch (err) {
+      setBarcodeData(null)
+    } finally {
+      setLoadingBarcodes(false)
+    }
+  }
+
+  function toggleBarcodes() {
+    if (!showBarcodes) {
+      setShowBarcodes(true)
+      loadBarcodes('')
+    } else {
+      setShowBarcodes(false)
+      setBarcodeSearch('')
+    }
+  }
+
+  function handleBarcodeSearch(e) {
+    const v = e.target.value
+    setBarcodeSearch(v)
+    // Debounce: search after user stops typing
+    clearTimeout(window._barcodeSearchTimer)
+    window._barcodeSearchTimer = setTimeout(() => loadBarcodes(v), 400)
   }
 
   const available = sessions.filter(s => s.status === 'open')
@@ -162,6 +198,84 @@ export default function Supervisor() {
             <p className={`text-center text-lg mt-3 ${excelResult.ok ? 'text-green-600' : 'text-red-600'}`}>
               {excelResult.msg}
             </p>
+          )}
+        </div>
+
+        {/* Master Data Viewer */}
+        <div className="bg-white rounded-2xl shadow p-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold">Master Data — Visualizar Produtos</h2>
+              <p className="text-gray-500 text-sm mt-0.5">Consulte os SKUs e EANs importados para conferência e rastreio de erros.</p>
+            </div>
+            <button
+              onClick={toggleBarcodes}
+              className={`py-2 px-5 rounded-xl text-sm font-bold transition-colors ${
+                showBarcodes
+                  ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              {showBarcodes ? '✕ Fechar' : '🔍 Visualizar Produtos'}
+            </button>
+          </div>
+
+          {showBarcodes && (
+            <div className="mt-5">
+              {/* Search field */}
+              <input
+                type="text"
+                placeholder="🔍  Buscar por SKU ou código de barras (EAN)..."
+                value={barcodeSearch}
+                onChange={handleBarcodeSearch}
+                className="w-full border-2 border-gray-300 focus:border-blue-400 rounded-xl p-3 text-base mb-4 outline-none"
+                autoFocus
+              />
+
+              {/* Stats */}
+              {barcodeData && (
+                <p className="text-xs text-gray-400 mb-3">
+                  {barcodeSearch
+                    ? `${barcodeData.results} resultado(s) encontrado(s) para "${barcodeSearch}"`
+                    : `${barcodeData.results} de ${barcodeData.total} produtos carregados`
+                  }
+                  {barcodeData.total > barcodeData.results && !barcodeSearch && (
+                    <span className="text-orange-500 ml-2">— use a busca para filtrar</span>
+                  )}
+                </p>
+              )}
+
+              {/* Table */}
+              {loadingBarcodes ? (
+                <p className="text-center text-gray-400 py-8">Carregando...</p>
+              ) : barcodeData?.items?.length === 0 ? (
+                <p className="text-center text-gray-400 py-8">
+                  {barcodeSearch ? 'Nenhum produto encontrado para essa busca.' : 'Nenhum produto cadastrado. Importe o Excel acima.'}
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-gray-200">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-gray-500 uppercase text-xs tracking-wide">
+                        <th className="text-left px-4 py-3 font-semibold w-1/3">SKU</th>
+                        <th className="text-left px-4 py-3 font-semibold">Código de Barras (EAN)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {barcodeData?.items?.map((b, idx) => (
+                        <tr
+                          key={b.barcode}
+                          className={`border-t border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                        >
+                          <td className="px-4 py-3 font-mono font-semibold text-gray-800">{b.sku}</td>
+                          <td className="px-4 py-3 font-mono text-gray-600">{b.barcode}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

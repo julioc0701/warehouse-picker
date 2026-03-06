@@ -64,4 +64,5 @@ export const api = {
   // Barcodes
   importBarcodesExcel: (formData) => req('POST', '/barcodes/import-excel', formData, true),
   resolveBarcode: (barcode) => req('GET', `/barcodes/resolve?barcode=${encodeURIComponent(barcode)}`),
+  listBarcodes: (search = '') => req('GET', `/barcodes/?search=${encodeURIComponent(search)}&limit=2000`),
 }
