@@ -56,6 +56,10 @@ export const api = {
   // Labels
   printLabels: (sessionId, sku, printerId) =>
     req('POST', '/labels/print', { session_id: sessionId, sku, printer_id: printerId }),
+  getZpl: (sessionId, sku) =>
+    req('GET', `/labels/zpl?session_id=${sessionId}&sku=${encodeURIComponent(sku)}`),
+  markPrinted: (sessionId, sku) =>
+    req('POST', '/labels/mark-printed', { session_id: sessionId, sku }),
 
   // Printers
   getPrinters: () => req('GET', '/printers/'),

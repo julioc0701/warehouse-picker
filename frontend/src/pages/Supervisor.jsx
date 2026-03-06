@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 
@@ -30,8 +30,25 @@ export default function Supervisor() {
   const [excelFile, setExcelFile] = useState(null)
   const [excelResult, setExcelResult] = useState(null)
   const [importingExcel, setImportingExcel] = useState(false)
+  const [agentInfo, setAgentInfo] = useState(null)   // null=checking | {ok,printer,all_printers}
+  const agentCheckRef = useRef(false)
 
   useEffect(() => { refresh() }, [])
+
+  // Check local print agent on mount
+  useEffect(() => {
+    if (agentCheckRef.current) return
+    agentCheckRef.current = true
+    checkAgent()
+  }, [])
+
+  function checkAgent() {
+    setAgentInfo(null)
+    fetch('http://localhost:6543/status', { signal: AbortSignal.timeout(2000) })
+      .then(r => r.json())
+      .then(d => setAgentInfo({ ok: d.status === 'ok', printer: d.printer, allPrinters: d.all_printers || [] }))
+      .catch(() => setAgentInfo({ ok: false, printer: null, allPrinters: [] }))
+  }
 
   function refresh() {
     Promise.all([api.getSessions(), api.getPrinters()]).then(([s, p]) => {
@@ -235,9 +252,63 @@ export default function Supervisor() {
           )}
         </div>
 
-        {/* Printers */}
+        {/* Local Print Agent */}
         <div className="bg-white rounded-2xl shadow p-6">
-          <h2 className="text-xl font-bold mb-3">Impressoras Zebra</h2>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xl font-bold">🖨️ Agente de Impressão Local (USB)</h2>
+            <button onClick={checkAgent} className="text-sm text-blue-600 hover:underline">
+              Verificar novamente
+            </button>
+          </div>
+
+          {agentInfo === null && (
+            <p className="text-gray-400 text-sm">Verificando conexão com o agente...</p>
+          )}
+
+          {agentInfo?.ok && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                <span className="text-green-600 text-xl">🟢</span>
+                <div>
+                  <p className="font-semibold text-green-800">Agente conectado</p>
+                  <p className="text-sm text-green-700">
+                    Impressora detectada: <strong>{agentInfo.printer}</strong>
+                  </p>
+                </div>
+              </div>
+              {agentInfo.allPrinters.length > 0 && (
+                <details className="text-xs text-gray-400 mt-1 cursor-pointer">
+                  <summary>Todas as impressoras instaladas ({agentInfo.allPrinters.length})</summary>
+                  <ul className="mt-1 ml-4 list-disc">
+                    {agentInfo.allPrinters.map((p, i) => <li key={i}>{p}</li>)}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
+
+          {agentInfo && !agentInfo.ok && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3">
+              <p className="font-semibold text-yellow-800">🟡 Agente não encontrado neste computador</p>
+              <p className="text-sm text-yellow-700 mt-1">
+                Para impressão USB automática, execute o agente no computador do operador:
+              </p>
+              <div className="bg-gray-800 text-green-300 rounded-lg px-3 py-2 mt-2 text-xs font-mono">
+                <p>cd print-agent</p>
+                <p>pip install pywin32</p>
+                <p>python agent.py</p>
+              </div>
+              <p className="text-xs text-yellow-600 mt-2">
+                Sem o agente, o sistema tentará usar uma impressora de rede configurada abaixo.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Printers (network / legacy) */}
+        <div className="bg-white rounded-2xl shadow p-6">
+          <h2 className="text-xl font-bold mb-1">Impressoras de Rede (TCP)</h2>
+          <p className="text-xs text-gray-400 mb-3">Fallback para impressoras Zebra conectadas via rede (IP:9100). Não necessário se usar o agente USB acima.</p>
           <form onSubmit={handleAddPrinter} className="flex flex-col gap-2 mb-4">
             <input className="border-2 border-gray-300 rounded-xl p-2" placeholder="Nome da impressora"
               value={newPrinter.name} onChange={e => setNewPrinter(p => ({ ...p, name: e.target.value }))} />

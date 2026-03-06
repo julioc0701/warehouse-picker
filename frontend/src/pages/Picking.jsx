@@ -43,6 +43,9 @@ export default function Picking() {
   const [printers, setPrinters] = useState([])
   const [selectedPrinter, setSelectedPrinter] = useState(null)
   const [printStatus, setPrintStatus] = useState(null)
+  // agentStatus: null=checking | 'ok' | 'unavailable'
+  const [agentStatus, setAgentStatus] = useState(null)
+  const agentRef = useRef(null)  // cached result to avoid stale closures
   const [loading, setLoading] = useState(true)
   const [allItems, setAllItems] = useState([])
   const [scanMode, setScanMode] = useState('unit') // 'unit' | 'box'
@@ -51,6 +54,21 @@ export default function Picking() {
 
   const focusInput = useCallback(() => {
     setTimeout(() => inputRef.current?.focus(), 80)
+  }, [])
+
+  // Check if local print agent is running on this machine
+  useEffect(() => {
+    fetch('http://localhost:6543/status', { signal: AbortSignal.timeout(1500) })
+      .then(r => r.json())
+      .then(d => {
+        const ok = d.status === 'ok'
+        agentRef.current = ok
+        setAgentStatus(ok ? 'ok' : 'unavailable')
+      })
+      .catch(() => {
+        agentRef.current = false
+        setAgentStatus('unavailable')
+      })
   }, [])
 
   // Load session on mount
@@ -104,14 +122,6 @@ export default function Picking() {
         : await api.scan(sessionId, code, operator.id, focusSku || null)
 
       updateFromResponse(res, code)
-
-      // Box mode: auto-print labels when item completes
-      if (scanMode === 'box' && res.status === 'complete' && res.item?.labels_ready && selectedPrinter) {
-        setPrintStatus('printing')
-        api.printLabels(sessionId, res.item.sku, selectedPrinter)
-          .then(r => setPrintStatus(r.status === 'ok' ? 'done' : 'error'))
-          .catch(() => setPrintStatus('error'))
-      }
     } catch (err) {
       triggerFlash('error')
       focusInput()
@@ -133,6 +143,10 @@ export default function Picking() {
         setItem(res.item)
         setPrintStatus(null)
         triggerFlash('complete')
+        // Auto-print when item finishes (unit mode OR box mode)
+        if (res.item?.labels_ready) {
+          autoPrintLabels(res.item.sku, res.item.qty_required)
+        }
         if (focusSku) {
           setTimeout(goBackToItems, 600)
         } else {
@@ -229,15 +243,50 @@ export default function Picking() {
     focusInput()
   }
 
-  async function handlePrint() {
-    if (!selectedPrinter) return
+  /**
+   * Core print function — called automatically on item completion AND manually.
+   * Flow:
+   *   1. If local agent (localhost:6543) is available → fetch ZPL from backend,
+   *      send each block to the agent, then mark as printed.
+   *   2. Else if a network printer is configured → call backend TCP print (legacy).
+   *   3. Else → show "no agent" warning.
+   * Double-print prevention: backend returns all_printed=true if already done.
+   */
+  async function autoPrintLabels(sku, _qty) {
     setPrintStatus('printing')
     try {
-      const res = await api.printLabels(sessionId, item.sku, selectedPrinter)
-      setPrintStatus(res.status === 'ok' ? 'done' : 'error')
+      if (agentRef.current) {
+        // --- Local USB agent path ---
+        const zplData = await api.getZpl(sessionId, sku)
+        if (zplData.all_printed) {
+          setPrintStatus('done')
+          return
+        }
+        for (const zpl of zplData.zpl_blocks) {
+          const r = await fetch('http://localhost:6543/print', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ zpl }),
+          })
+          const d = await r.json()
+          if (d.status !== 'ok') throw new Error(d.message || 'Erro no agente')
+        }
+        await api.markPrinted(sessionId, sku)
+        setPrintStatus('done')
+      } else if (selectedPrinter) {
+        // --- Network TCP fallback ---
+        const r = await api.printLabels(sessionId, sku, selectedPrinter)
+        setPrintStatus(r.status === 'ok' ? 'done' : 'error')
+      } else {
+        setPrintStatus('no_agent')
+      }
     } catch {
       setPrintStatus('error')
     }
+  }
+
+  async function handlePrint() {
+    if (item) await autoPrintLabels(item.sku, item.qty_required)
     focusInput()
   }
 
@@ -385,26 +434,55 @@ export default function Picking() {
               </button>
             </div>
 
-            {/* Print button */}
+            {/* Print section */}
             {item.labels_ready && (
-              <div className="border-t pt-4">
+              <div className="border-t pt-4 flex flex-col gap-2">
+
+                {/* Agent status badge */}
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${
+                  agentStatus === 'ok'
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : agentStatus === 'unavailable'
+                    ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                    : 'bg-gray-50 text-gray-500 border border-gray-200'
+                }`}>
+                  <span>{agentStatus === 'ok' ? '🟢' : agentStatus === 'unavailable' ? '🟡' : '⏳'}</span>
+                  <span>
+                    {agentStatus === 'ok'
+                      ? 'Agente USB conectado — impressão automática'
+                      : agentStatus === 'unavailable'
+                      ? 'Agente USB não encontrado — usando impressora de rede'
+                      : 'Verificando agente...'}
+                  </span>
+                </div>
+
                 <div className="flex gap-3 items-center">
-                  <select
-                    value={selectedPrinter || ''}
-                    onChange={e => setSelectedPrinter(Number(e.target.value))}
-                    className="flex-1 border-2 border-gray-300 rounded-xl p-3 text-lg"
-                  >
-                    {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                  {/* Show printer selector only when using network fallback */}
+                  {agentStatus === 'unavailable' && printers.length > 0 && (
+                    <select
+                      value={selectedPrinter || ''}
+                      onChange={e => setSelectedPrinter(Number(e.target.value))}
+                      className="flex-1 border-2 border-gray-300 rounded-xl p-3 text-lg"
+                    >
+                      {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  )}
                   <button
                     onClick={handlePrint}
-                    disabled={!selectedPrinter || printStatus === 'printing'}
-                    className="flex-1 py-4 rounded-xl bg-green-600 text-white text-xl font-bold hover:bg-green-700 disabled:opacity-50"
+                    disabled={printStatus === 'printing' || printStatus === 'done'}
+                    className={`flex-1 py-4 rounded-xl text-white text-xl font-bold disabled:opacity-50 transition-colors ${
+                      printStatus === 'done'
+                        ? 'bg-green-500'
+                        : printStatus === 'error' || printStatus === 'no_agent'
+                        ? 'bg-red-500 hover:bg-red-600'
+                        : 'bg-green-600 hover:bg-green-700'
+                    }`}
                   >
-                    {printStatus === 'printing' ? 'Imprimindo...' :
-                     printStatus === 'done' ? '✓ Impresso!' :
+                    {printStatus === 'printing' ? '⏳ Imprimindo...' :
+                     printStatus === 'done' ? '✅ Impresso!' :
                      printStatus === 'error' ? '✗ Erro — Tentar novamente' :
-                     `IMPRIMIR ${item.qty_required} ETIQUETAS`}
+                     printStatus === 'no_agent' ? '⚠ Agente não ativo — Tentar novamente' :
+                     `🖨️ IMPRIMIR ${item.qty_required} ETIQUETAS`}
                   </button>
                 </div>
               </div>
