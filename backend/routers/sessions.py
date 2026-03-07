@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
@@ -336,6 +336,71 @@ def delete_session(session_id: int, db: DBSession = Depends(get_db)):
     db.delete(sess)
     db.commit()
     return {"status": "ok"}
+
+
+@router.get("/find-by-barcode")
+def find_by_barcode(
+    barcode: str = Query(...),
+    operator_id: int = Query(...),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Locate a picking item by barcode across all active sessions.
+    Returns the best match (highest qty_required) with an action hint.
+
+    Actions:
+      open             — item is pending/in_progress, session available to this operator
+      already_done     — item is complete/partial/out_of_stock
+      in_progress_other — session is claimed by a different operator
+      not_found        — barcode not in the Barcode table
+      not_in_sessions  — SKU exists but not in any active session
+    """
+    # 1. Resolve barcode → SKU
+    bc = db.query(Barcode).filter(Barcode.barcode == barcode).first()
+    if not bc:
+        return {"action": "not_found", "barcode": barcode}
+
+    sku = bc.sku
+
+    # 2. Find all items with this SKU in non-completed sessions, best first
+    rows = (
+        db.query(PickingItem, Session, Operator)
+        .join(Session, Session.id == PickingItem.session_id)
+        .outerjoin(Operator, Operator.id == Session.operator_id)
+        .filter(
+            PickingItem.sku == sku,
+            Session.status != "completed",
+        )
+        .order_by(PickingItem.qty_required.desc())
+        .all()
+    )
+
+    if not rows:
+        return {"action": "not_in_sessions", "sku": sku, "barcode": barcode}
+
+    item, session, operator = rows[0]
+
+    match = {
+        "session_id": session.id,
+        "session_code": session.session_code,
+        "item_status": item.status,
+        "qty_required": item.qty_required,
+        "qty_picked": item.qty_picked,
+        "description": item.description,
+        "operator_id": operator.id if operator else None,
+        "operator_name": operator.name if operator else None,
+    }
+
+    # 3. Determine action
+    terminal = {"complete", "partial", "out_of_stock"}
+    if item.status in terminal:
+        action = "already_done"
+    elif operator and operator.id != operator_id:
+        action = "in_progress_other"
+    else:
+        action = "open"
+
+    return {"action": action, "sku": sku, "barcode": barcode, "best_match": match}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

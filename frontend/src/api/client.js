@@ -32,6 +32,8 @@ export const api = {
   claimSession: (sessionId, operatorId) => req('POST', `/sessions/${sessionId}/claim`, { operator_id: operatorId }),
   deleteSession: (sessionId) => req('DELETE', `/sessions/${sessionId}`),
   reopenSession: (sessionId) => req('POST', `/sessions/${sessionId}/reopen-session`),
+  findByBarcode: (barcode, operatorId) =>
+    req('GET', `/sessions/find-by-barcode?barcode=${encodeURIComponent(barcode)}&operator_id=${operatorId}`),
 
   // Picking actions
   scan: (sessionId, barcode, operatorId, focusSku = null) =>
