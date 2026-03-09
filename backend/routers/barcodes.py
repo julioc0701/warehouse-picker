@@ -25,8 +25,11 @@ async def import_excel(
     wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=True)
     ws = wb.active
 
-    # Load existing barcodes into a set to avoid duplicates
-    existing: set[str] = set(r[0] for r in db.query(Barcode.barcode).all())
+    # Wipe existing data — full replace on every import
+    db.query(Barcode).delete()
+    db.commit()
+
+    existing: set[str] = set()
     added = 0
     skipped = 0
 
