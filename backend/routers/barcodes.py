@@ -19,7 +19,8 @@ async def import_excel(
 ):
     """
     Imports EAN barcodes from an Excel file.
-    Expected columns (in order): SKU, EAN  (or SKU, <qualquer coisa>, EAN — coluna B ignorada)
+    Expected columns: SKU (A) | Descrição (B, ignorada) | EAN1 (C) | EAN2 (D, opcional) | EAN3 (E, opcional)
+    Fallback: se o arquivo tiver apenas 2 colunas (SKU, EAN), a coluna B é o EAN.
     """
     content = await file.read()
     wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=True)
@@ -37,30 +38,45 @@ async def import_excel(
         if not row or not row[0]:
             continue
         sku = str(row[0]).strip()
-        # Column B is ignored — description comes from the picking list (PickingItem)
-        ean = str(row[2]).strip() if len(row) > 2 and row[2] else (
-              str(row[1]).strip() if len(row) > 1 and row[1] else None)
+        if not sku:
+            continue
 
-        if not sku or not ean or ean.lower() in ("none", "n/a", ""):
+        # Column B (index 1) = Descrição — ignored (description comes from PickingItem)
+        # Columns C, D, E (indices 2, 3, 4) = EANs (one per column, all linked to same SKU)
+        # Fallback: if file has only 2 columns (SKU, EAN), column B is the EAN
+        if len(row) <= 2:
+            ean_cols = [1]
+        else:
+            ean_cols = range(2, min(len(row), 5))  # C, D, E
+
+        ean_list = []
+        for col_idx in ean_cols:
+            val = row[col_idx] if col_idx < len(row) else None
+            if val:
+                s = str(val).strip()
+                if s and s.lower() not in ("none", "n/a", ""):
+                    ean_list.append(s)
+
+        if not ean_list:
             skipped += 1
             continue
 
-        # If EAN equals SKU, treat it as a SKU-alias (is_primary=False), not a real barcode
-        ean_is_real = ean != sku
+        # Ensure SKU-alias entry exists (barcode == sku, used internally)
+        if sku not in existing:
+            db.add(Barcode(barcode=sku, sku=sku, is_primary=False))
+            existing.add(sku)
 
-        if ean not in existing:
+        for ean in ean_list:
+            if ean in existing:
+                skipped += 1
+                continue
+            ean_is_real = ean != sku
             db.add(Barcode(barcode=ean, sku=sku, is_primary=ean_is_real))
             existing.add(ean)
             if ean_is_real:
                 added += 1
             else:
                 skipped += 1
-        else:
-            skipped += 1
-
-        if sku not in existing:
-            db.add(Barcode(barcode=sku, sku=sku, is_primary=False))
-            existing.add(sku)
 
     db.commit()
     return {"added": added, "skipped": skipped, "deleted": deleted}
