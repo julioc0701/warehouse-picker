@@ -112,18 +112,38 @@ export default function MasterData() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 uppercase text-xs tracking-wide border-b bg-gray-50">
-                  <th className="text-left px-5 py-3 font-semibold w-2/5">SKU</th>
-                  <th className="text-left px-5 py-3 font-semibold">Código de Barras (EAN)</th>
+                  <th className="text-left px-5 py-3 font-semibold w-[18%]">SKU</th>
+                  <th className="text-left px-5 py-3 font-semibold w-[35%]">Descrição</th>
+                  <th className="text-left px-5 py-3 font-semibold">Código(s) de Barras</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((b, idx) => (
                   <tr
-                    key={b.barcode}
+                    key={b.sku}
                     className={`border-t border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}
                   >
-                    <td className="px-5 py-3 font-mono font-bold text-gray-800">{b.sku}</td>
-                    <td className="px-5 py-3 font-mono text-gray-600">{b.barcode}</td>
+                    <td className="px-5 py-3 font-mono font-bold text-gray-800 align-top">{b.sku}</td>
+                    <td className="px-5 py-3 text-gray-700 align-top">
+                      {b.description || <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-5 py-3 align-top">
+                      <div className="flex flex-wrap gap-1">
+                        {(b.barcodes ?? [{ barcode: b.barcode, is_primary: true, learned: false }]).map(bc => (
+                          <span
+                            key={bc.barcode}
+                            title={bc.learned ? 'Aprendido durante bipagem' : 'Importado'}
+                            className={`font-mono text-xs px-2 py-1 rounded ${
+                              bc.learned
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {bc.barcode}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

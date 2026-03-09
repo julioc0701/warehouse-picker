@@ -34,7 +34,8 @@ async def import_excel(
         if not row or not row[0]:
             continue
         sku = str(row[0]).strip()
-        ean = str(row[2]).strip() if row[2] else None
+        desc = str(row[1]).strip() if len(row) > 1 and row[1] else None
+        ean = str(row[2]).strip() if len(row) > 2 and row[2] else None
 
         if not sku or not ean or ean.lower() in ("none", "n/a", ""):
             skipped += 1
@@ -44,13 +45,18 @@ async def import_excel(
         ean_is_real = ean != sku
 
         if ean not in existing:
-            db.add(Barcode(barcode=ean, sku=sku, is_primary=ean_is_real))
+            db.add(Barcode(barcode=ean, sku=sku, description=desc if ean_is_real else None, is_primary=ean_is_real))
             existing.add(ean)
             if ean_is_real:
                 added += 1
             else:
                 skipped += 1
         else:
+            # Update description if the existing entry has none
+            if desc and ean_is_real:
+                db.query(Barcode).filter(
+                    Barcode.barcode == ean, Barcode.description.is_(None)
+                ).update({"description": desc})
             skipped += 1
 
         if sku not in existing:
@@ -75,22 +81,65 @@ def list_barcodes(
     search: str = Query(default="", description="Filtrar por SKU ou código de barras"),
     limit: int = Query(default=200, le=2000),
 ):
-    q = db.query(Barcode).filter(
-        Barcode.is_primary == True,
-        Barcode.barcode != Barcode.sku,  # exclude SKU-alias entries
-    )
+    # Exclude SKU-alias entries (barcode == sku) throughout
+    base = Barcode.barcode != Barcode.sku
+
     if search:
         like = f"%{search}%"
-        q = q.filter(
-            (Barcode.sku.ilike(like)) | (Barcode.barcode.ilike(like))
+        # Find all SKUs that match the search (by sku name or by any of their barcodes)
+        matching_skus = (
+            db.query(Barcode.sku)
+            .filter(base, (Barcode.sku.ilike(like)) | (Barcode.barcode.ilike(like)))
+            .distinct()
+            .subquery()
         )
-    rows = q.order_by(Barcode.sku).limit(limit).all()
-    total = db.query(Barcode).filter(
-        Barcode.is_primary == True,
-        Barcode.barcode != Barcode.sku,
-    ).count()
+        rows = (
+            db.query(Barcode)
+            .filter(base, Barcode.sku.in_(matching_skus))
+            .order_by(Barcode.sku, Barcode.is_primary.desc())
+            .all()
+        )
+        total = len({b.sku for b in rows})
+    else:
+        # Count distinct products (SKUs with at least one primary barcode from import)
+        total = (
+            db.query(Barcode.sku)
+            .filter(base, Barcode.is_primary == True)
+            .distinct()
+            .count()
+        )
+        # Get top N SKUs (ordered alphabetically), then fetch all their barcodes
+        top_skus = (
+            db.query(Barcode.sku)
+            .filter(base, Barcode.is_primary == True)
+            .distinct()
+            .order_by(Barcode.sku)
+            .limit(limit)
+            .subquery()
+        )
+        rows = (
+            db.query(Barcode)
+            .filter(base, Barcode.sku.in_(top_skus))
+            .order_by(Barcode.sku, Barcode.is_primary.desc())
+            .all()
+        )
+
+    # Group by SKU
+    grouped: dict[str, dict] = {}
+    for b in rows:
+        if b.sku not in grouped:
+            grouped[b.sku] = {"sku": b.sku, "description": None, "barcodes": []}
+        g = grouped[b.sku]
+        if b.description and not g["description"]:
+            g["description"] = b.description
+        g["barcodes"].append({
+            "barcode": b.barcode,
+            "is_primary": b.is_primary,
+            "learned": b.added_by is not None,
+        })
+
     return {
         "total": total,
-        "results": len(rows),
-        "items": [{"barcode": b.barcode, "sku": b.sku} for b in rows],
+        "results": len(grouped),
+        "items": list(grouped.values()),
     }
