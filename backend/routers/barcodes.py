@@ -5,7 +5,7 @@ Allows importing EAN→SKU mapping from an Excel file.
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
-from models import Barcode
+from models import Barcode, PickingItem
 from io import BytesIO
 import openpyxl
 
@@ -19,7 +19,7 @@ async def import_excel(
 ):
     """
     Imports EAN barcodes from an Excel file.
-    Expected columns (in order): SKU, Descrição, EAN
+    Expected columns (in order): SKU, EAN  (or SKU, <qualquer coisa>, EAN — coluna B ignorada)
     """
     content = await file.read()
     wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=True)
@@ -34,8 +34,9 @@ async def import_excel(
         if not row or not row[0]:
             continue
         sku = str(row[0]).strip()
-        desc = str(row[1]).strip() if len(row) > 1 and row[1] else None
-        ean = str(row[2]).strip() if len(row) > 2 and row[2] else None
+        # Column B is ignored — description comes from the picking list (PickingItem)
+        ean = str(row[2]).strip() if len(row) > 2 and row[2] else (
+              str(row[1]).strip() if len(row) > 1 and row[1] else None)
 
         if not sku or not ean or ean.lower() in ("none", "n/a", ""):
             skipped += 1
@@ -45,18 +46,13 @@ async def import_excel(
         ean_is_real = ean != sku
 
         if ean not in existing:
-            db.add(Barcode(barcode=ean, sku=sku, description=desc if ean_is_real else None, is_primary=ean_is_real))
+            db.add(Barcode(barcode=ean, sku=sku, is_primary=ean_is_real))
             existing.add(ean)
             if ean_is_real:
                 added += 1
             else:
                 skipped += 1
         else:
-            # Update description if the existing entry has none
-            if desc and ean_is_real:
-                db.query(Barcode).filter(
-                    Barcode.barcode == ean, Barcode.description.is_(None)
-                ).update({"description": desc})
             skipped += 1
 
         if sku not in existing:
@@ -129,14 +125,25 @@ def list_barcodes(
     for b in rows:
         if b.sku not in grouped:
             grouped[b.sku] = {"sku": b.sku, "description": None, "barcodes": []}
-        g = grouped[b.sku]
-        if b.description and not g["description"]:
-            g["description"] = b.description
-        g["barcodes"].append({
+        grouped[b.sku]["barcodes"].append({
             "barcode": b.barcode,
             "is_primary": b.is_primary,
             "learned": b.added_by is not None,
         })
+
+    # Enrich with description from PickingItem (description lives in the picking list, not in barcodes)
+    if grouped:
+        desc_rows = (
+            db.query(PickingItem.sku, PickingItem.description)
+            .filter(
+                PickingItem.sku.in_(grouped.keys()),
+                PickingItem.description.isnot(None),
+            )
+            .distinct(PickingItem.sku)
+            .all()
+        )
+        for sku, desc in desc_rows:
+            grouped[sku]["description"] = desc
 
     return {
         "total": total,
