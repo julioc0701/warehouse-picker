@@ -97,7 +97,7 @@ export default function Supervisor() {
       const fd = new FormData()
       fd.append('file', excelFile)
       const res = await api.importBarcodesExcel(fd)
-      setExcelResult({ ok: true, msg: `✔ ${res.added} EANs importados, ${res.skipped} já existiam` })
+      setExcelResult({ ok: true, msg: `✔ ${res.added} EANs importados (${res.deleted ?? 0} anteriores removidos)` })
     } catch (err) {
       setExcelResult({ ok: false, msg: err.message })
     } finally {

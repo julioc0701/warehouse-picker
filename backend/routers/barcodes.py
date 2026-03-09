@@ -26,7 +26,7 @@ async def import_excel(
     ws = wb.active
 
     # Wipe existing data — full replace on every import
-    db.query(Barcode).delete()
+    deleted = db.query(Barcode).delete()
     db.commit()
 
     existing: set[str] = set()
@@ -63,7 +63,7 @@ async def import_excel(
             existing.add(sku)
 
     db.commit()
-    return {"added": added, "skipped": skipped}
+    return {"added": added, "skipped": skipped, "deleted": deleted}
 
 
 @router.get("/resolve")
