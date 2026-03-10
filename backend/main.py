@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from database import init_db, get_db
-from routers import sessions, operators, labels, printers, seed, barcodes
+from routers import sessions, operators, labels, printers, seed, barcodes, print_jobs
 from models import Operator
 
 app = FastAPI(title="Warehouse Picker API", version="1.0.0")
@@ -22,6 +22,7 @@ app.include_router(labels.router, prefix="/api/labels", tags=["labels"])
 app.include_router(printers.router, prefix="/api/printers", tags=["printers"])
 app.include_router(seed.router, prefix="/api/test", tags=["seed"])
 app.include_router(barcodes.router, prefix="/api/barcodes", tags=["barcodes"])
+app.include_router(print_jobs.router, prefix="/api/print-jobs", tags=["print-jobs"])
 
 DEFAULT_OPERATORS = ["Master", "Julio", "Cris", "Rafael", "Luidi", "Weligton", "Cristofer", "Renan"]
 

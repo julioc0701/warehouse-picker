@@ -58,14 +58,14 @@ export default function Supervisor() {
 
   async function handleUpload(e) {
     e.preventDefault()
-    if (!files.pdf || !files.txt) return alert('Selecione os dois arquivos')
+    if (!files.pdf) return alert('Selecione o PDF da lista de picking')
     setUploading(true)
     setUploadResult(null)
     try {
       const fd = new FormData()
       fd.append('session_code', form.session_code)
       fd.append('picking_pdf', files.pdf)
-      fd.append('labels_txt', files.txt)
+      if (files.txt) fd.append('labels_txt', files.txt)
       const res = await api.uploadSession(fd)
       setUploadResult({
         ok: true,
@@ -144,9 +144,11 @@ export default function Supervisor() {
                   onChange={e => setFiles(f => ({ ...f, pdf: e.target.files[0] }))} required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Etiquetas (TXT/ZPL)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Etiquetas (TXT/ZPL) <span className="text-gray-400 font-normal">— opcional</span>
+                </label>
                 <input type="file" accept=".txt,.zpl" className="w-full border-2 border-gray-300 rounded-xl p-3"
-                  onChange={e => setFiles(f => ({ ...f, txt: e.target.files[0] }))} required />
+                  onChange={e => setFiles(f => ({ ...f, txt: e.target.files[0] || null }))} />
               </div>
             </div>
             <button type="submit" disabled={uploading}

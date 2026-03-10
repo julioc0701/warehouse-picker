@@ -1,7 +1,7 @@
 """Core picking business logic."""
 from datetime import datetime
 from sqlalchemy.orm import Session as DBSession
-from models import PickingItem, Barcode, ScanEvent, Session
+from models import PickingItem, Barcode, ScanEvent, Session, Label, PrintJob
 
 
 def get_current_item(db: DBSession, session_id: int) -> PickingItem | None:
@@ -46,7 +46,8 @@ def process_scan(
         .first()
     )
     if item is None:
-        return {"status": "unknown_barcode", "barcode": barcode, "sku": sku}
+        # Barcode é conhecido mas pertence a um SKU que não está nesta sessão
+        return {"status": "wrong_session", "barcode": barcode, "sku": sku}
 
     current = get_current_item(db, session_id)
 
@@ -70,12 +71,20 @@ def process_scan(
     item.qty_picked += 1
     item.status = "in_progress"
 
+    # Marca sessão como in_progress no primeiro scan (claim não muda mais o status)
+    sess = db.query(Session).filter(Session.id == session_id).first()
+    if sess and sess.status == "open":
+        sess.status = "in_progress"
+        if not sess.operator_id:
+            sess.operator_id = operator_id
+
     log_event(db, session_id, item.id, barcode, operator_id, "scan", 1)
 
     if item.qty_picked >= item.qty_required:
         item.status = "complete"
         item.completed_at = datetime.utcnow()
         _auto_complete_session(db, session_id)
+        _create_print_job(db, session_id, item.sku, operator_id)
         db.commit()
         return {"status": "complete", "item": _item_dict(item)}
 
@@ -104,7 +113,8 @@ def process_scan_box(
         .first()
     )
     if item is None:
-        return {"status": "unknown_barcode", "barcode": barcode, "sku": sku}
+        # Barcode é conhecido mas pertence a um SKU que não está nesta sessão
+        return {"status": "wrong_session", "barcode": barcode, "sku": sku}
 
     current = get_current_item(db, session_id)
     in_focus_mode = focus_sku is not None and focus_sku == sku
@@ -125,8 +135,16 @@ def process_scan_box(
     item.status = "complete"
     item.completed_at = datetime.utcnow()
 
+    # Marca sessão como in_progress no primeiro scan (claim não muda mais o status)
+    sess = db.query(Session).filter(Session.id == session_id).first()
+    if sess and sess.status == "open":
+        sess.status = "in_progress"
+        if not sess.operator_id:
+            sess.operator_id = operator_id
+
     log_event(db, session_id, item.id, barcode, operator_id, "scan_box", delta)
     _auto_complete_session(db, session_id)
+    _create_print_job(db, session_id, item.sku, operator_id)
     db.commit()
     return {"status": "complete", "item": _item_dict(item)}
 
@@ -215,6 +233,7 @@ def reset_item(db: DBSession, session_id: int, sku: str, operator_id: int) -> di
     item.shortage_qty = 0
     item.status = "pending"
     item.completed_at = None
+    item.labels_printed = False
 
     # If session was completed, revert to in_progress
     sess = db.query(Session).filter(Session.id == session_id).first()
@@ -235,6 +254,7 @@ def reset_all_items(db: DBSession, session_id: int, operator_id: int) -> dict:
         item.shortage_qty = 0
         item.status = "pending"
         item.completed_at = None
+        item.labels_printed = False
         log_event(db, session_id, item.id, "RESET_ALL", operator_id, "reset_all", 0)
 
     sess = db.query(Session).filter(Session.id == session_id).first()
@@ -270,6 +290,44 @@ def session_progress(db: DBSession, session_id: int) -> dict:
     }
 
 
+def _create_print_job(db: DBSession, session_id: int, sku: str, operator_id: int) -> None:
+    """
+    Cria um PrintJob para o SKU recém-concluído, se houver etiquetas cadastradas.
+    Não cria duplicata se já existe job PENDING ou PRINTING para o mesmo par.
+    """
+    # Evita duplicata em andamento
+    active = (
+        db.query(PrintJob)
+        .filter(
+            PrintJob.session_id == session_id,
+            PrintJob.sku == sku,
+            PrintJob.status.in_(["PENDING", "PRINTING"]),
+        )
+        .first()
+    )
+    if active:
+        return
+
+    labels = (
+        db.query(Label)
+        .filter(Label.session_id == session_id, Label.sku == sku)
+        .order_by(Label.id)
+        .all()
+    )
+    if not labels:
+        return  # sem etiquetas cadastradas para este SKU
+
+    zpl = "\n".join(lb.zpl_content for lb in labels if lb.zpl_content)
+    job = PrintJob(
+        session_id=session_id,
+        sku=sku,
+        zpl_content=zpl,
+        operator_id=operator_id,
+        status="PENDING",
+    )
+    db.add(job)
+
+
 def log_event(db, session_id, item_id, barcode, operator_id, event_type, qty_delta):
     ev = ScanEvent(
         session_id=session_id,
@@ -294,10 +352,12 @@ def _item_dict(item: PickingItem) -> dict:
     return {
         "id": item.id,
         "sku": item.sku,
+        "ml_code": item.ml_code,
         "description": item.description,
         "qty_required": item.qty_required,
         "qty_picked": item.qty_picked,
         "shortage_qty": item.shortage_qty,
         "status": item.status,
         "labels_ready": item.status in ("complete", "partial", "out_of_stock") and item.qty_picked > 0,
+        "labels_printed": item.labels_printed,
     }

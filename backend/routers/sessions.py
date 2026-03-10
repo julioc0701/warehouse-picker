@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from pydantic import BaseModel
@@ -7,6 +9,8 @@ from models import Session, PickingItem, Label, Barcode, Operator, ScanEvent
 from parsers.pdf_parser import parse_picking_pdf
 from parsers.zpl_parser import parse_zpl_file, get_ml_barcodes
 from services import picking as svc
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -55,17 +59,44 @@ def _clear_all_sessions(db: DBSession):
 async def upload_session(
     session_code: str = Form(...),
     picking_pdf: UploadFile = File(...),
-    labels_txt: UploadFile = File(...),
+    labels_txt: UploadFile | None = File(None),
     db: DBSession = Depends(get_db),
 ):
     pdf_bytes = await picking_pdf.read()
-    txt_content = (await labels_txt.read()).decode("utf-8", errors="replace")
+    txt_content = (await labels_txt.read()).decode("utf-8", errors="replace") if labels_txt else ""
 
-    items_data = parse_picking_pdf(pdf_bytes)
-    labels_data = parse_zpl_file(txt_content)
+    logger.info("Upload iniciado: session_code=%s pdf=%d bytes txt=%d bytes",
+                session_code, len(pdf_bytes), len(txt_content))
+
+    # Roda parsers pesados em thread para não bloquear o event loop do uvicorn
+    loop = asyncio.get_event_loop()
+    try:
+        items_data = await asyncio.wait_for(
+            loop.run_in_executor(None, parse_picking_pdf, pdf_bytes),
+            timeout=120.0,
+        )
+    except asyncio.TimeoutError:
+        logger.error("Timeout ao processar PDF (%d bytes)", len(pdf_bytes))
+        raise HTTPException(408, "PDF demorou mais de 2 min para processar. Verifique o arquivo.")
+    except Exception as exc:
+        logger.exception("Erro ao parsear PDF")
+        raise HTTPException(400, f"Erro ao ler PDF: {exc}")
+
+    labels_data = []
+    if txt_content:
+        try:
+            labels_data = await asyncio.wait_for(
+                loop.run_in_executor(None, parse_zpl_file, txt_content),
+                timeout=60.0,
+            )
+        except Exception as exc:
+            logger.exception("Erro ao parsear TXT/ZPL")
+            raise HTTPException(400, f"Erro ao ler arquivo de etiquetas: {exc}")
+
+    logger.info("Parse concluído: %d itens, %d etiquetas", len(items_data), len(labels_data))
 
     if not items_data:
-        raise HTTPException(400, "Não foi possível extrair itens do PDF.")
+        raise HTTPException(400, "Nenhum item encontrado no PDF. Verifique se é uma lista de picking do Mercado Livre.")
 
     # ── Replace all previous data ──────────────────────────────────────────
     _clear_all_sessions(db)
@@ -99,6 +130,7 @@ async def upload_session(
             pi = PickingItem(
                 session_id=sess.id,
                 sku=item["sku"],
+                ml_code=item.get("ml_code"),
                 description=item.get("description", ""),
                 qty_required=item["qty_required"],
             )
@@ -144,7 +176,7 @@ def claim_session(session_id: int, body: ClaimBody, db: DBSession = Depends(get_
     if sess.status != "open" or sess.operator_id is not None:
         raise HTTPException(409, "Lista já está em uso por outro operador")
     sess.operator_id = body.operator_id
-    sess.status = "in_progress"
+    # Não muda status aqui — in_progress só ocorre no primeiro scan
     db.commit()
     return {"session_id": sess.id, "session_code": sess.session_code, "status": sess.status}
 
@@ -210,6 +242,36 @@ def find_by_barcode(
     )
 
     if not rows:
+        # Verificar se o SKU foi concluído em alguma sessão finalizada
+        done_rows = (
+            db.query(PickingItem, Session, Operator)
+            .join(Session, Session.id == PickingItem.session_id)
+            .outerjoin(Operator, Operator.id == Session.operator_id)
+            .filter(
+                PickingItem.sku == sku,
+                Session.status == "completed",
+                PickingItem.status.in_(["complete", "partial", "out_of_stock"]),
+            )
+            .order_by(Session.id.desc())
+            .first()
+        )
+        if done_rows:
+            done_item, done_session, done_operator = done_rows
+            return {
+                "action": "already_done",
+                "sku": sku,
+                "barcode": barcode,
+                "best_match": {
+                    "session_id": done_session.id,
+                    "session_code": done_session.session_code,
+                    "item_status": done_item.status,
+                    "qty_required": done_item.qty_required,
+                    "qty_picked": done_item.qty_picked,
+                    "description": done_item.description,
+                    "operator_id": done_operator.id if done_operator else None,
+                    "operator_name": done_operator.name if done_operator else None,
+                },
+            }
         return {"action": "not_in_sessions", "sku": sku, "barcode": barcode}
 
     item, session, operator = rows[0]

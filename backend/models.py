@@ -35,12 +35,14 @@ class PickingItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), nullable=False)
     sku: Mapped[str] = mapped_column(String(100), nullable=False)
+    ml_code: Mapped[str | None] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text)
     qty_required: Mapped[int] = mapped_column(Integer, nullable=False)
     qty_picked: Mapped[int] = mapped_column(Integer, default=0)
     shortage_qty: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     # pending | in_progress | complete | partial | out_of_stock
+    labels_printed: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
@@ -98,3 +100,20 @@ class Printer(Base):
     ip_address: Mapped[str] = mapped_column(String(50), nullable=False)
     port: Mapped[int] = mapped_column(Integer, default=9100)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PrintJob(Base):
+    """Fila persistente de impressão — criada ao finalizar bipagem de um item."""
+    __tablename__ = "print_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), nullable=False)
+    sku: Mapped[str] = mapped_column(String(100), nullable=False)
+    zpl_content: Mapped[str] = mapped_column(Text, nullable=False)
+    # PENDING → PRINTING → PRINTED | ERROR
+    status: Mapped[str] = mapped_column(String(20), default="PENDING")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    printed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
+    operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id"), nullable=True)
+    printer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

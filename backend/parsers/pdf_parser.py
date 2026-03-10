@@ -9,7 +9,7 @@ from io import BytesIO
 
 def parse_picking_pdf(content: bytes) -> list[dict]:
     """
-    Returns a list of dicts: [{sku, description, qty_required, ean}]
+    Returns a list of dicts: [{sku, ml_code, description, qty_required, ean}]
     """
     with pdfplumber.open(BytesIO(content)) as pdf:
         items = _extract_ml_table(pdf)
@@ -48,6 +48,7 @@ def _extract_ml_table(pdf) -> list[dict]:
                     continue
 
                 ean = _extract_ean(produto)
+                ml_code = _extract_ml_code(produto)
                 description = _extract_description(produto, sku)
 
                 # Deduplicate: same SKU can appear on multiple pages
@@ -61,6 +62,7 @@ def _extract_ml_table(pdf) -> list[dict]:
                     seen_skus.add(sku)
                     items.append({
                         "sku": sku,
+                        "ml_code": ml_code,
                         "description": description,
                         "qty_required": qty,
                         "ean": ean,
@@ -72,6 +74,12 @@ def _extract_ml_table(pdf) -> list[dict]:
 def _extract_sku(produto: str) -> str | None:
     # Pattern: 'SKU:\nSKU_VALUE' or 'SKU: SKU_VALUE'
     match = re.search(r"SKU:\s*\n?(\S+)", produto)
+    return match.group(1) if match else None
+
+
+def _extract_ml_code(produto: str) -> str | None:
+    # Pattern: 'Código ML: CIGQ85538' (the 'C' and accent may be mangled by PDF)
+    match = re.search(r"digo\s+ML:\s*([A-Z0-9]+)", produto, re.IGNORECASE)
     return match.group(1) if match else None
 
 

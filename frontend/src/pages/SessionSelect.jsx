@@ -32,13 +32,15 @@ export default function SessionSelect() {
       .finally(() => setLoading(false))
   }
 
-  // Lista que este operador já está trabalhando
-  const mySession = sessions.find(
+  // Listas que este operador já está trabalhando
+  const mySessions = sessions.filter(
     s => s.operator_id === operator?.id && s.status === 'in_progress'
   )
 
-  // Listas disponíveis (abertas, sem operador)
-  const available = sessions.filter(s => s.status === 'open' && !s.operator_id)
+  // Listas disponíveis: abertas sem operador OU reservadas por mim mas sem nenhum scan ainda
+  const available = sessions.filter(s =>
+    s.status === 'open' && (!s.operator_id || s.operator_id === operator?.id)
+  )
 
   // Listas que este operador já concluiu
   const myDone = sessions.filter(
@@ -131,7 +133,9 @@ export default function SessionSelect() {
                   <p className="font-bold text-lg">✓ Item já concluído</p>
                   <p className="mt-1">
                     <strong>{searchResult.sku}</strong> foi concluído na lista{' '}
-                    <strong>{m.session_code}</strong> ({m.qty_picked}/{m.qty_required} separados)
+                    <strong>{m.session_code}</strong>
+                    {m.operator_name && <> pelo operador <strong>{m.operator_name}</strong></>}
+                    {' '}({m.qty_picked}/{m.qty_required} separados)
                   </p>
                 </>
               )
@@ -172,22 +176,27 @@ export default function SessionSelect() {
 
       {!loading && (
         <>
-          {/* Minha lista em andamento */}
-          {mySession && (
+          {/* Minhas listas em andamento */}
+          {mySessions.length > 0 && (
             <div className="mb-8">
               <h3 className="text-lg font-semibold text-blue-600 uppercase tracking-wide mb-3">
-                Minha lista em andamento
+                {mySessions.length === 1 ? 'Minha lista em andamento' : `Minhas listas em andamento (${mySessions.length})`}
               </h3>
-              <button
-                onClick={() => navigate(`/sessions/${mySession.id}/items`)}
-                className="w-full bg-blue-50 border-2 border-blue-400 rounded-2xl p-6 text-left hover:bg-blue-100 transition-colors shadow"
-              >
-                <div className="flex justify-between items-center">
-                  <span className="text-2xl font-bold">{mySession.session_code}</span>
-                  <span className="text-blue-600 text-lg font-semibold">CONTINUAR →</span>
-                </div>
-                <ProgressBar picked={mySession.items_picked} total={mySession.items_total} />
-              </button>
+              <div className="flex flex-col gap-4">
+                {mySessions.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => navigate(`/sessions/${s.id}/items`)}
+                    className="w-full bg-blue-50 border-2 border-blue-400 rounded-2xl p-6 text-left hover:bg-blue-100 transition-colors shadow"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-2xl font-bold">{s.session_code}</span>
+                      <span className="text-blue-600 text-lg font-semibold">CONTINUAR →</span>
+                    </div>
+                    <ProgressBar picked={s.items_picked} total={s.items_total} />
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -196,13 +205,13 @@ export default function SessionSelect() {
             Listas disponíveis
           </h3>
 
-          {available.length === 0 && !mySession && (
+          {available.length === 0 && mySessions.length === 0 && (
             <p className="text-center text-gray-400 text-xl mt-8">
               Nenhuma lista disponível no momento.
             </p>
           )}
 
-          {available.length === 0 && mySession && (
+          {available.length === 0 && mySessions.length > 0 && (
             <p className="text-gray-400 text-center mt-4">Nenhuma outra lista disponível.</p>
           )}
 

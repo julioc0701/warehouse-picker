@@ -71,4 +71,16 @@ export const api = {
   importBarcodesExcel: (formData) => req('POST', '/barcodes/import-excel', formData, true),
   resolveBarcode: (barcode) => req('GET', `/barcodes/resolve?barcode=${encodeURIComponent(barcode)}`),
   listBarcodes: (search = '') => req('GET', `/barcodes/?search=${encodeURIComponent(search)}&limit=2000`),
+
+  // Master Data CRUD
+  createProduct: (sku, description, barcodes) =>
+    req('POST', '/barcodes/product', { sku, description, barcodes }),
+  updateProduct: (sku, description) =>
+    req('PUT', `/barcodes/${encodeURIComponent(sku)}`, { description }),
+  deleteProduct: (sku) =>
+    req('DELETE', `/barcodes/${encodeURIComponent(sku)}`),
+  addBarcodeToProduct: (sku, barcode) =>
+    req('POST', `/barcodes/${encodeURIComponent(sku)}/barcode`, { barcode }),
+  removeBarcodeFromProduct: (sku, barcode) =>
+    req('DELETE', `/barcodes/${encodeURIComponent(sku)}/barcode/${encodeURIComponent(barcode)}`),
 }

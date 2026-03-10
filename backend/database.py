@@ -23,7 +23,7 @@ def get_db():
 
 
 def init_db():
-    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer  # noqa
+    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob  # noqa
     Base.metadata.create_all(bind=engine)
 
     # Lightweight column migrations (SQLite doesn't support DROP COLUMN but ADD is fine)
@@ -33,4 +33,12 @@ def init_db():
         cols = [c["name"] for c in insp.get_columns("barcodes")]
         if "description" not in cols:
             conn.execute(text("ALTER TABLE barcodes ADD COLUMN description VARCHAR(500)"))
+            conn.commit()
+
+        picking_cols = [c["name"] for c in insp.get_columns("picking_items")]
+        if "ml_code" not in picking_cols:
+            conn.execute(text("ALTER TABLE picking_items ADD COLUMN ml_code VARCHAR(100)"))
+            conn.commit()
+        if "labels_printed" not in picking_cols:
+            conn.execute(text("ALTER TABLE picking_items ADD COLUMN labels_printed BOOLEAN NOT NULL DEFAULT 0"))
             conn.commit()

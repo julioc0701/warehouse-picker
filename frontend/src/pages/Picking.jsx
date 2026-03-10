@@ -21,6 +21,47 @@ const STATUS_LABEL = {
   out_of_stock: '✗ Sem estoque',
 }
 
+// Endereço do agente local de impressão instalado na máquina do operador
+const PRINT_AGENT_URL = 'http://127.0.0.1:9100/print'
+
+/**
+ * Gera um bloco ZPL 2-up: duas etiquetas idênticas lado a lado numa bobina dupla.
+ * Layout esquerdo: X base ~30 | Layout direito: X base ~350
+ * Cada ^XA...^XZ = 1 impressão física = 2 etiquetas.
+ */
+function buildZplBlock(mlCode, description, sku) {
+  // Sanitiza caracteres especiais do ZPL (^ e ~ são comandos)
+  const safeDesc = (description || '')
+    .replace(/\^/g, ' ')
+    .replace(/~/g, ' ')
+    .substring(0, 120)
+  return (
+    '^XA^CI28\n' +
+    // ── Etiqueta ESQUERDA (X base 30) ──────────────────────────────────────
+    '^LH0,0\n' +
+    `^FO30,15^BY2,,0^BCN,54,N,N^FD${mlCode}^FS\n` +
+    `^FO105,75^A0N,20,25^FH^FD${mlCode}^FS\n` +
+    `^FO105,76^A0N,20,25^FH^FD${mlCode}^FS\n` +
+    `^FO16,115^A0N,18,18^FB300,2,2,L^FH^FD${safeDesc}^FS\n` +
+    `^FO16,153^A0N,18,18^FB300,1,0,L^FH^FD^FS\n` +
+    `^FO15,153^A0N,18,18^FB300,1,0,L^FH^FD^FS\n` +
+    `^FO16,172^A0N,18,18^FH^FDSKU: ${sku}\n` +
+    '^FS\n' +
+    // ── Etiqueta DIREITA (X base 350) ──────────────────────────────────────
+    '^CI28\n' +
+    '^LH0,0\n' +
+    `^FO350,15^BY2,,0^BCN,54,N,N^FD${mlCode}^FS\n` +
+    `^FO425,75^A0N,20,25^FH^FD${mlCode}^FS\n` +
+    `^FO425,76^A0N,20,25^FH^FD${mlCode}^FS\n` +
+    `^FO346,115^A0N,18,18^FB300,2,2,L^FH^FD${safeDesc}^FS\n` +
+    `^FO346,153^A0N,18,18^FB300,1,0,L^FH^FD^FS\n` +
+    `^FO345,153^A0N,18,18^FB300,1,0,L^FH^FD^FS\n` +
+    `^FO346,172^A0N,18,18^FH^FDSKU: ${sku}\n` +
+    '^FS\n' +
+    '^XZ'
+  )
+}
+
 export default function Picking() {
   const { sessionId } = useParams()
   const [searchParams] = useSearchParams()
@@ -28,7 +69,6 @@ export default function Picking() {
   const navigate = useNavigate()
   const operator = JSON.parse(sessionStorage.getItem('operator') || 'null')
 
-  // Navigate back to the items list (used when focusSku mode is active)
   const goBackToItems = useCallback(
     () => navigate(`/sessions/${sessionId}/items`),
     [sessionId, navigate]
@@ -39,13 +79,14 @@ export default function Picking() {
   const [recentItems, setRecentItems] = useState([])
   const [barcode, setBarcode] = useState('')
   const [flash, setFlash] = useState(null) // 'ok' | 'error' | 'complete'
-  const [dialog, setDialog] = useState(null) // { type, data }
+  const [dialog, setDialog] = useState(null)
   const [printers, setPrinters] = useState([])
   const [selectedPrinter, setSelectedPrinter] = useState(null)
+
+  // printStatus: null | 'printing' | 'done' | 'error'
   const [printStatus, setPrintStatus] = useState(null)
-  // agentStatus: null=checking | 'ok' | 'unavailable'
-  const [agentStatus, setAgentStatus] = useState(null)
-  const agentRef = useRef(null)  // cached result to avoid stale closures
+  const [printError, setPrintError] = useState(null)
+
   const [loading, setLoading] = useState(true)
   const [allItems, setAllItems] = useState([])
   const [scanMode, setScanMode] = useState('unit') // 'unit' | 'box'
@@ -54,21 +95,6 @@ export default function Picking() {
 
   const focusInput = useCallback(() => {
     setTimeout(() => inputRef.current?.focus(), 80)
-  }, [])
-
-  // Check if local print agent is running on this machine
-  useEffect(() => {
-    fetch('http://localhost:6543/status', { signal: AbortSignal.timeout(1500) })
-      .then(r => r.json())
-      .then(d => {
-        const ok = d.status === 'ok'
-        agentRef.current = ok
-        setAgentStatus(ok ? 'ok' : 'unavailable')
-      })
-      .catch(() => {
-        agentRef.current = false
-        setAgentStatus('unavailable')
-      })
   }, [])
 
   // Load session on mount
@@ -82,7 +108,6 @@ export default function Picking() {
       setPrinters(p)
       if (p.length > 0) setSelectedPrinter(p[0].id)
       if (focusSku) {
-        // Focused mode: load items list and show the specific SKU
         api.getItems(sessionId).then(items => {
           const focused = items.find(i => i.sku === focusSku)
           setItem(focused || null)
@@ -99,7 +124,6 @@ export default function Picking() {
     api.getSession(sessionId).then(s => {
       setSession(s)
       setItem(s.current_item)
-      // When session completes, load full items list for summary
       if (!s.current_item) {
         api.getItems(sessionId).then(setAllItems)
       }
@@ -142,10 +166,11 @@ export default function Picking() {
       case 'complete':
         setItem(res.item)
         setPrintStatus(null)
+        setPrintError(null)
         triggerFlash('complete')
-        // Auto-print when item finishes (unit mode OR box mode)
+        // Dispara impressão automática no agente local (porta 9100)
         if (res.item?.labels_ready) {
-          autoPrintLabels(res.item.sku, res.item.qty_required)
+          autoPrintLabels(res.item)
         }
         if (focusSku) {
           setTimeout(goBackToItems, 600)
@@ -166,8 +191,12 @@ export default function Picking() {
         break
 
       case 'unknown_barcode':
-        setDialog({ type: 'unknown', data: { barcode: code, sku: res.sku } })
-        return // don't refocus yet
+        setDialog({ type: 'unknown', data: { barcode: code } })
+        return
+
+      case 'wrong_session':
+        triggerFlash('error')
+        break
 
       case 'wrong_sku':
         setDialog({ type: 'wrong_sku', data: res })
@@ -194,7 +223,6 @@ export default function Picking() {
   }
 
   async function handleOutOfStock() {
-    // If some units were already scanned, ask for confirmation showing the breakdown
     if (item.qty_picked > 0) {
       setDialog({ type: 'oos_confirm' })
       return
@@ -236,57 +264,73 @@ export default function Picking() {
     setDialog(null)
     if (item) {
       await api.addBarcode(sessionId, code, item.sku, operator.id)
-      // Retry the scan
-      const res = await api.scan(sessionId, code, operator.id)
+      const res = await api.scan(sessionId, code, operator.id, focusSku || null)
       updateFromResponse(res, code)
     }
     focusInput()
   }
 
   /**
-   * Core print function — called automatically on item completion AND manually.
-   * Flow:
-   *   1. If local agent (localhost:6543) is available → fetch ZPL from backend,
-   *      send each block to the agent, then mark as printed.
-   *   2. Else if a network printer is configured → call backend TCP print (legacy).
-   *   3. Else → show "no agent" warning.
-   * Double-print prevention: backend returns all_printed=true if already done.
+   * Gera o ZPL dinamicamente a partir dos dados do item e envia ao agente local
+   * (ZebraPrintAgent.exe) em http://127.0.0.1:9100/print.
+   *
+   * - Todos os labels são concatenados em um único payload → 1 POST atômico.
+   * - mode: 'no-cors' evita bloqueio CORS (o agente não devolve ACAO headers).
+   *   Se o agente estiver desligado, fetch() lança TypeError normalmente.
+   * - Proteção contra dupla impressão via item.labels_printed.
    */
-  async function autoPrintLabels(sku, _qty) {
+  async function autoPrintLabels(pickedItem, force = false) {
+    // Proteção contra dupla impressão — ignorada se force=true (botão Reimprimir)
+    if (!force && pickedItem.labels_printed) {
+      setPrintStatus('done')
+      return
+    }
+
     setPrintStatus('printing')
+    setPrintError(null)
+
     try {
-      if (agentRef.current) {
-        // --- Local USB agent path ---
-        const zplData = await api.getZpl(sessionId, sku)
-        if (zplData.all_printed) {
-          setPrintStatus('done')
-          return
-        }
-        for (const zpl of zplData.zpl_blocks) {
-          const r = await fetch('http://localhost:6543/print', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ zpl }),
-          })
-          const d = await r.json()
-          if (d.status !== 'ok') throw new Error(d.message || 'Erro no agente')
-        }
-        await api.markPrinted(sessionId, sku)
-        setPrintStatus('done')
-      } else if (selectedPrinter) {
-        // --- Network TCP fallback ---
-        const r = await api.printLabels(sessionId, sku, selectedPrinter)
-        setPrintStatus(r.status === 'ok' ? 'done' : 'error')
-      } else {
-        setPrintStatus('no_agent')
-      }
-    } catch {
+      const singleBlock = buildZplBlock(
+        pickedItem.ml_code || pickedItem.sku,
+        pickedItem.description,
+        pickedItem.sku,
+      )
+      // Bobina 2-up: cada bloco ZPL imprime 2 etiquetas físicas lado a lado.
+      // Quantidade de blocos = ceil(qty_picked / 2)
+      // Exemplos: qty=6 → 3 blocos (6 etiquetas) | qty=5 → 3 blocos (6 etiquetas)
+      const qty = pickedItem.qty_picked || 1
+      const numBlocks = Math.ceil(qty / 2)
+      const fullZpl = Array.from({ length: numBlocks }, () => singleBlock).join('\n')
+
+      await fetch(PRINT_AGENT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: fullZpl,
+        mode: 'no-cors',
+        signal: AbortSignal.timeout(30000),
+      })
+
+      // Marca como impresso no backend
+      await api.markPrinted(sessionId, pickedItem.sku)
+      setPrintStatus('done')
+
+    } catch (err) {
+      const isConnectionError = err instanceof TypeError || err.name === 'AbortError'
+      const msg = isConnectionError
+        ? 'ZebraPrintAgent.exe não está aberto. Abra o programa e clique em "Tentar novamente".'
+        : (err?.message || 'Erro desconhecido na impressão')
+      setPrintError(msg)
       setPrintStatus('error')
     }
   }
 
   async function handlePrint() {
-    if (item) await autoPrintLabels(item.sku, item.qty_required)
+    if (item) await autoPrintLabels(item)
+    focusInput()
+  }
+
+  async function handleForcePrint() {
+    if (item) await autoPrintLabels(item, true)
     focusInput()
   }
 
@@ -329,7 +373,7 @@ export default function Picking() {
 
       <div className="flex-1 p-6 max-w-2xl mx-auto w-full flex flex-col gap-6">
 
-        {/* Scan input — hidden when session is complete */}
+        {/* Scan input */}
         {item && (
           <div className="bg-white rounded-2xl shadow p-6">
 
@@ -434,57 +478,74 @@ export default function Picking() {
               </button>
             </div>
 
-            {/* Print section */}
+            {/* Seção de impressão — aparece quando o item tem etiquetas prontas */}
             {item.labels_ready && (
-              <div className="border-t pt-4 flex flex-col gap-2">
+              <div className="border-t pt-4 flex flex-col gap-3">
 
-                {/* Agent status badge */}
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${
-                  agentStatus === 'ok'
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : agentStatus === 'unavailable'
-                    ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
-                    : 'bg-gray-50 text-gray-500 border border-gray-200'
-                }`}>
-                  <span>{agentStatus === 'ok' ? '🟢' : agentStatus === 'unavailable' ? '🟡' : '⏳'}</span>
-                  <span>
-                    {agentStatus === 'ok'
-                      ? 'Agente USB conectado — impressão automática'
-                      : agentStatus === 'unavailable'
-                      ? 'Agente USB não encontrado — usando impressora de rede'
-                      : 'Verificando agente...'}
-                  </span>
-                </div>
-
-                <div className="flex gap-3 items-center">
-                  {/* Show printer selector only when using network fallback */}
-                  {agentStatus === 'unavailable' && printers.length > 0 && (
-                    <select
-                      value={selectedPrinter || ''}
-                      onChange={e => setSelectedPrinter(Number(e.target.value))}
-                      className="flex-1 border-2 border-gray-300 rounded-xl p-3 text-lg"
-                    >
-                      {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  )}
+                {/* Estado: aguardando ação */}
+                {printStatus === null && (
                   <button
                     onClick={handlePrint}
-                    disabled={printStatus === 'printing' || printStatus === 'done'}
-                    className={`flex-1 py-4 rounded-xl text-white text-xl font-bold disabled:opacity-50 transition-colors ${
-                      printStatus === 'done'
-                        ? 'bg-green-500'
-                        : printStatus === 'error' || printStatus === 'no_agent'
-                        ? 'bg-red-500 hover:bg-red-600'
-                        : 'bg-green-600 hover:bg-green-700'
-                    }`}
+                    className="py-4 rounded-xl bg-green-600 text-white text-xl font-bold hover:bg-green-700 active:bg-green-800 transition-colors"
                   >
-                    {printStatus === 'printing' ? '⏳ Imprimindo...' :
-                     printStatus === 'done' ? '✅ Impresso!' :
-                     printStatus === 'error' ? '✗ Erro — Tentar novamente' :
-                     printStatus === 'no_agent' ? '⚠ Agente não ativo — Tentar novamente' :
-                     `🖨️ IMPRIMIR ${item.qty_required} ETIQUETAS`}
+                    🖨️ IMPRIMIR {item.qty_required} ETIQUETAS
                   </button>
-                </div>
+                )}
+
+                {/* Estado: enviando para a impressora */}
+                {printStatus === 'printing' && (
+                  <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
+                    <span className="animate-spin text-xl">⏳</span>
+                    <div>
+                      <p className="text-blue-800 font-semibold text-sm">Enviando para impressora...</p>
+                      <p className="text-blue-600 text-xs mt-0.5">Zebra ZD220 via agente local</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Estado: impresso com sucesso */}
+                {printStatus === 'done' && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl">
+                      <span className="text-2xl">✅</span>
+                      <div>
+                        <p className="text-green-800 font-semibold text-sm">
+                          {item.qty_required} {item.qty_required === 1 ? 'etiqueta impressa' : 'etiquetas impressas'} com sucesso
+                        </p>
+                        <p className="text-green-600 text-xs mt-0.5">Zebra ZD220</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleForcePrint}
+                      title="Reimprimir etiquetas"
+                      className="px-3 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium transition-colors whitespace-nowrap"
+                    >
+                      🔁 Reimprimir
+                    </button>
+                  </div>
+                )}
+
+                {/* Estado: erro na impressão */}
+                {printStatus === 'error' && (
+                  <div className="flex flex-col gap-2">
+                    <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
+                      <p className="text-red-700 font-semibold text-sm">✗ Falha na impressão</p>
+                      <p className="text-red-600 text-xs mt-1">{printError}</p>
+                    </div>
+                    <button
+                      onClick={handlePrint}
+                      className="py-3 rounded-xl bg-red-500 text-white text-base font-bold hover:bg-red-600 active:bg-red-700 transition-colors"
+                    >
+                      🔄 Tentar novamente
+                    </button>
+                  </div>
+                )}
+
+                {/* Dica permanente sobre o agente */}
+                <p className="text-xs text-gray-400 text-center px-2">
+                  Para imprimir, o <strong>ZebraPrintAgent.exe</strong> deve estar aberto na máquina.
+                </p>
+
               </div>
             )}
           </div>
@@ -492,7 +553,7 @@ export default function Picking() {
           <CompletionSummary items={allItems} onBack={() => navigate('/sessions')} />
         )}
 
-        {/* Recently completed — hide when session is done (full summary is shown instead) */}
+        {/* Concluídos recentemente */}
         {item && recentItems.length > 0 && (
           <div>
             <p className="text-gray-400 uppercase tracking-wide text-sm mb-2">Concluídos recentemente</p>
@@ -600,7 +661,6 @@ function CompletionSummary({ items, onBack }) {
   return (
     <div className="flex flex-col gap-6">
 
-      {/* Banner principal */}
       <div className="bg-green-100 border-2 border-green-400 rounded-2xl p-8 text-center">
         <p className="text-4xl font-bold text-green-700 mb-3">🎉 Lista concluída!</p>
         <div className="flex justify-center gap-8 text-xl">
@@ -617,7 +677,6 @@ function CompletionSummary({ items, onBack }) {
         </div>
       </div>
 
-      {/* Cards de contagem por status */}
       <div className="grid grid-cols-3 gap-3 text-center">
         <div className="bg-green-50 border-2 border-green-300 rounded-xl p-4">
           <p className="text-3xl font-bold text-green-700">{complete.length}</p>
@@ -633,7 +692,6 @@ function CompletionSummary({ items, onBack }) {
         </div>
       </div>
 
-      {/* Detalhes dos itens com pendência */}
       {pendentes.length > 0 && (
         <div className="bg-white rounded-2xl shadow p-4">
           <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
