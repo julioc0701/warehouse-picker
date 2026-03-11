@@ -166,6 +166,7 @@ def _job_dict(job: PrintJob) -> dict:
         "session_id": job.session_id,
         "sku": job.sku,
         "status": job.status,
+        "zpl_content": job.zpl_content,
         "printer_name": job.printer_name,
         "error_msg": job.error_msg,
         "created_at": job.created_at.isoformat() if job.created_at else None,
