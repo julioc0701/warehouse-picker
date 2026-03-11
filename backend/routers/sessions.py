@@ -173,6 +173,9 @@ class ClaimBody(BaseModel):
 @router.post("/{session_id}/claim")
 def claim_session(session_id: int, body: ClaimBody, db: DBSession = Depends(get_db)):
     sess = _session_or_404(db, session_id)
+    # Já reservada pelo mesmo operador — idempotente, só navega
+    if sess.operator_id == body.operator_id:
+        return {"session_id": sess.id, "session_code": sess.session_code, "status": sess.status}
     if sess.status != "open" or sess.operator_id is not None:
         raise HTTPException(409, "Lista já está em uso por outro operador")
     sess.operator_id = body.operator_id

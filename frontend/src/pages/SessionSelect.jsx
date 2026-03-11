@@ -12,6 +12,7 @@ export default function SessionSelect() {
   const [searchBarcode, setSearchBarcode] = useState('')
   const [searchResult, setSearchResult] = useState(null)  // null | result object
   const [searching, setSearching] = useState(false)
+  const [claimError, setClaimError] = useState(null)
   const searchRef = useRef()
   const dismissTimer = useRef()
 
@@ -47,14 +48,21 @@ export default function SessionSelect() {
     s => s.operator_id === operator?.id && s.status === 'completed'
   )
 
-  async function claim(sessionId) {
+  async function claim(sessionId, session) {
+    // Se já é minha lista reservada, navega direto sem re-claim
+    if (session?.operator_id === operator?.id) {
+      navigate(`/sessions/${sessionId}/items`)
+      return
+    }
     setClaiming(sessionId)
+    setClaimError(null)
     try {
       await api.claimSession(sessionId, operator.id)
       navigate(`/sessions/${sessionId}/items`)
     } catch (err) {
-      alert(err.message)
       setClaiming(null)
+      setClaimError(err.message)
+      setTimeout(() => setClaimError(null), 4000)
       load()
     }
   }
@@ -215,13 +223,19 @@ export default function SessionSelect() {
             <p className="text-gray-400 text-center mt-4">Nenhuma outra lista disponível.</p>
           )}
 
+          {claimError && (
+            <div className="mb-4 rounded-2xl px-5 py-4 text-base font-medium bg-red-50 border-2 border-red-300 text-red-800">
+              <p className="font-bold text-lg">✗ {claimError}</p>
+            </div>
+          )}
+
           <div className="flex flex-col gap-4">
             {available.map(s => {
               const isClaiming = claiming === s.id
               return (
                 <button
                   key={s.id}
-                  onClick={() => claim(s.id)}
+                  onClick={() => claim(s.id, s)}
                   disabled={!!claiming}
                   className="bg-white border-2 border-gray-200 hover:border-blue-400 rounded-2xl p-6 text-left shadow transition-colors disabled:opacity-60"
                 >
