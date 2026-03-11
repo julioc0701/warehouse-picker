@@ -272,7 +272,7 @@ export default function Picking() {
 
   /**
    * Gera o ZPL dinamicamente a partir dos dados do item e envia ao agente local
-   * (ZebraPrintAgent.exe) em http://127.0.0.1:9100/print.
+   * (ZebraAgent-WP.exe) em http://127.0.0.1:9100/print.
    *
    * - Todos os blocos são concatenados em um único payload → 1 POST atômico.
    * - mode: 'no-cors' evita bloqueio CORS (o agente não devolve CORS headers).
@@ -317,7 +317,7 @@ export default function Picking() {
     } catch (err) {
       const isConnectionError = err instanceof TypeError || err.name === 'AbortError'
       const msg = isConnectionError
-        ? 'ZebraPrintAgent.exe não está aberto. Abra o programa e clique em "Tentar novamente".'
+        ? 'ZebraAgent-WP.exe não está aberto. Abra o programa e clique em "Tentar novamente".'
         : (err?.message || 'Erro desconhecido na impressão')
       setPrintError(msg)
       setPrintStatus('error')
@@ -543,7 +543,7 @@ export default function Picking() {
 
                 {/* Dica permanente sobre o agente */}
                 <p className="text-xs text-gray-400 text-center px-2">
-                  Para imprimir, o <strong>ZebraPrintAgent.exe</strong> deve estar aberto na máquina.
+                  Para imprimir, o <strong>ZebraAgent-WP.exe</strong> deve estar aberto na máquina.
                 </p>
 
               </div>
