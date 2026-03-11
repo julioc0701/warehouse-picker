@@ -302,6 +302,36 @@ def find_by_barcode(
     return {"action": action, "sku": sku, "barcode": barcode, "best_match": match}
 
 
+@router.get("/shortage-report")
+def shortage_report(db: DBSession = Depends(get_db)):
+    """
+    Retorna todos os SKUs com falta (shortage_qty > 0) das sessões concluídas,
+    agregados por SKU com a soma total de unidades faltantes.
+    """
+    from sqlalchemy import func
+
+    rows = (
+        db.query(
+            PickingItem.sku,
+            PickingItem.description,
+            func.sum(PickingItem.shortage_qty).label("total_shortage"),
+        )
+        .join(Session, Session.id == PickingItem.session_id)
+        .filter(
+            Session.status == "completed",
+            PickingItem.shortage_qty > 0,
+        )
+        .group_by(PickingItem.sku, PickingItem.description)
+        .order_by(func.sum(PickingItem.shortage_qty).desc())
+        .all()
+    )
+
+    return [
+        {"sku": r.sku, "description": r.description, "shortage_qty": r.total_shortage}
+        for r in rows
+    ]
+
+
 @router.get("/{session_id}")
 def get_session(session_id: int, db: DBSession = Depends(get_db)):
     s = _session_or_404(db, session_id)
