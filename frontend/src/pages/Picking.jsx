@@ -382,6 +382,7 @@ export default function Picking() {
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Modo de bipagem</p>
               <div className="grid grid-cols-2 gap-2">
                 <button
+                  onMouseDown={e => e.preventDefault()}
                   onClick={() => { setScanMode('unit'); focusInput() }}
                   className={`py-3 px-4 rounded-xl text-sm font-bold border-2 transition-all ${
                     scanMode === 'unit'
@@ -393,6 +394,7 @@ export default function Picking() {
                   Unitário (1 a 1)
                 </button>
                 <button
+                  onMouseDown={e => e.preventDefault()}
                   onClick={() => { setScanMode('box'); focusInput() }}
                   className={`py-3 px-4 rounded-xl text-sm font-bold border-2 transition-all ${
                     scanMode === 'box'
