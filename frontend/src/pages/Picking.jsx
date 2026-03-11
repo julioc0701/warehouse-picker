@@ -199,7 +199,7 @@ export default function Picking() {
         break
 
       case 'wrong_sku':
-        setDialog({ type: 'wrong_sku', data: res })
+        setDialog({ type: 'wrong_sku', data: { ...res, barcode: code } })
         return
     }
 
@@ -264,7 +264,9 @@ export default function Picking() {
     setDialog(null)
     if (item) {
       await api.addBarcode(sessionId, code, item.sku, operator.id)
-      const res = await api.scan(sessionId, code, operator.id, focusSku || null)
+      const res = scanMode === 'box'
+        ? await api.scanBox(sessionId, code, operator.id, focusSku || item.sku)
+        : await api.scan(sessionId, code, operator.id, focusSku || null)
       updateFromResponse(res, code)
     }
     focusInput()
@@ -633,9 +635,15 @@ export default function Picking() {
           expectedSku={dialog.data.expected_sku}
           onConfirm={async () => {
             setDialog(null)
-            const res = await api.reopen(sessionId, dialog.data.scanned_sku, operator.id)
-            setItem(res.item)
-            focusInput()
+            if (scanMode === 'box') {
+              // Modo caixa: completa o item bipado diretamente (sem precisar bipar de novo)
+              const res = await api.scanBox(sessionId, dialog.data.barcode, operator.id, dialog.data.scanned_sku)
+              updateFromResponse(res, dialog.data.barcode)
+            } else {
+              const res = await api.reopen(sessionId, dialog.data.scanned_sku, operator.id)
+              setItem(res.item)
+              focusInput()
+            }
           }}
           onCancel={() => { setDialog(null); focusInput() }}
         />
