@@ -141,10 +141,12 @@ export default function Picking() {
     setBarcode('')
 
     try {
-      const res = scanMode === 'box'
-        ? await api.scanBox(sessionId, code, operator.id, focusSku || null)
-        : await api.scan(sessionId, code, operator.id, focusSku || null)
+      if (scanMode === 'box' && item) {
+        setDialog({ type: 'box_qty', data: { code } })
+        return
+      }
 
+      const res = await api.scan(sessionId, code, operator.id, focusSku || null)
       updateFromResponse(res, code)
     } catch (err) {
       triggerFlash('error')
@@ -195,11 +197,17 @@ export default function Picking() {
         return
 
       case 'wrong_session':
-        triggerFlash('error')
-        break
+        setDialog({ type: 'wrong_session', data: { barcode: code, sku: res.sku, description: res.description } })
+        return
 
       case 'wrong_sku':
-        setDialog({ type: 'wrong_sku', data: { ...res, barcode: code } })
+        // Em focus mode, o operador está trabalhando num SKU específico.
+        // Bipar um código de outro SKU não deve oferecer substituição — só informa o erro.
+        if (focusSku) {
+          setDialog({ type: 'wrong_session', data: { barcode: code, sku: res.scanned_sku, description: res.item?.description } })
+        } else {
+          setDialog({ type: 'wrong_sku', data: { ...res, barcode: code } })
+        }
         return
     }
 
@@ -270,6 +278,46 @@ export default function Picking() {
       updateFromResponse(res, code)
     }
     focusInput()
+  }
+
+  async function handleBoxQtyConfirm(qty) {
+    const { code } = dialog.data
+    setDialog(null)
+    try {
+      if (qty === 0) {
+        const res = await api.outOfStock(sessionId, item.sku, operator.id)
+        setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
+        if (focusSku) {
+          goBackToItems()
+        } else {
+          setRecentItems(prev => [res.item, ...prev.slice(0, 4)])
+          const s = await api.getSession(sessionId)
+          setSession(s)
+          setItem(s.current_item)
+          if (!s.current_item) api.getItems(sessionId).then(setAllItems)
+          focusInput()
+        }
+      } else if (qty < item.qty_required) {
+        const res = await api.shortage(sessionId, item.sku, qty, operator.id)
+        setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
+        if (focusSku) {
+          goBackToItems()
+        } else {
+          setRecentItems(prev => [res.item, ...prev.slice(0, 4)])
+          const s = await api.getSession(sessionId)
+          setSession(s)
+          setItem(s.current_item)
+          if (!s.current_item) api.getItems(sessionId).then(setAllItems)
+          focusInput()
+        }
+      } else if (qty >= item.qty_required) {
+        const res = await api.scanBox(sessionId, code, operator.id, focusSku || null)
+        updateFromResponse(res, code)
+      }
+    } catch (err) {
+      triggerFlash('error')
+      focusInput()
+    }
   }
 
   /**
@@ -629,6 +677,38 @@ export default function Picking() {
           onSkip={() => { setDialog(null); focusInput() }}
         />
       )}
+      {dialog?.type === 'wrong_session' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full flex flex-col gap-6">
+            <h2 className="text-2xl font-bold text-center text-red-600">⚠ Código já vinculado</h2>
+            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 text-center">
+              <p className="text-gray-500 text-sm">O código de barras</p>
+              <p className="font-mono font-bold text-lg mt-1 break-all">{dialog.data.barcode}</p>
+              <p className="text-gray-500 text-sm mt-3">já está vinculado ao SKU:</p>
+              <p className="font-mono font-bold text-2xl text-red-700 mt-1">{dialog.data.sku}</p>
+              {dialog.data.description && (
+                <p className="text-gray-600 text-sm mt-1">{dialog.data.description}</p>
+              )}
+              <p className="text-gray-400 text-xs mt-3">Este código não pertence ao item desta lista.</p>
+            </div>
+            <button
+              onClick={() => { setDialog(null); focusInput() }}
+              className="py-4 rounded-xl bg-gray-100 border-2 border-gray-300 text-lg font-medium hover:bg-gray-200"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {dialog?.type === 'box_qty' && item && (
+        <BoxQtyDialog
+          item={item}
+          onConfirm={handleBoxQtyConfirm}
+          onCancel={() => { setDialog(null); focusInput() }}
+        />
+      )}
+
       {dialog?.type === 'wrong_sku' && (
         <WrongSkuDialog
           scannedItem={dialog.data.item}
@@ -648,6 +728,69 @@ export default function Picking() {
           onCancel={() => { setDialog(null); focusInput() }}
         />
       )}
+    </div>
+  )
+}
+
+function BoxQtyDialog({ item, onConfirm, onCancel }) {
+  const [qty, setQty] = useState(item.qty_required)
+
+  function handleConfirm() {
+    const n = Math.max(0, Math.min(item.qty_required, Number(qty) || 0))
+    onConfirm(n)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full flex flex-col gap-6">
+        <h2 className="text-2xl font-bold text-center">Quantidade Encontrada</h2>
+        <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-4 text-center">
+          <p className="font-mono font-bold text-xl">{item.sku}</p>
+          {item.description && (
+            <p className="text-gray-500 text-sm mt-1">{item.description}</p>
+          )}
+          <p className="text-gray-400 text-xs mt-2">Necessário: {item.qty_required} unidades</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
+            Quantas você encontrou?
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={item.qty_required}
+            value={qty}
+            onChange={e => setQty(e.target.value)}
+            onFocus={e => e.target.select()}
+            autoFocus
+            className="text-center text-4xl font-bold border-2 border-gray-300 focus:border-blue-500 rounded-xl py-4 outline-none"
+          />
+          {Number(qty) < item.qty_required && Number(qty) > 0 && (
+            <p className="text-orange-600 text-sm text-center">
+              ⚠ {item.qty_required - Number(qty)} unidades serão registradas como falta
+            </p>
+          )}
+          {Number(qty) === 0 && (
+            <p className="text-red-600 text-sm text-center">
+              ✗ Item será marcado como sem estoque
+            </p>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={onCancel}
+            className="py-4 rounded-xl border-2 border-gray-300 text-lg font-medium hover:bg-gray-100"
+          >
+            CANCELAR
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="py-4 rounded-xl bg-blue-600 text-white text-lg font-bold hover:bg-blue-700"
+          >
+            CONFIRMAR
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
