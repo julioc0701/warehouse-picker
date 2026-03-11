@@ -95,16 +95,16 @@ def refresh_printer_cache() -> None:
 # ---------------------------------------------------------------------------
 
 def _port_in_use(port: int) -> bool:
-    """Retorna True se algo ja esta escutando na porta."""
+    """Retorna True se algo ja esta escutando na porta (IPv4 explícito)."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(1)
-        return s.connect_ex(("localhost", port)) == 0
+        return s.connect_ex(("127.0.0.1", port)) == 0
 
 
 def _is_our_agent(port: int) -> bool:
     """Retorna True se o processo na porta ja e nosso agente (mesma versao)."""
     try:
-        req = urllib.request.Request(f"http://localhost:{port}/status")
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/status")
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read())
             return data.get("agent") == "warehouse-picker-zebra"
@@ -531,14 +531,14 @@ if __name__ == "__main__":
     # Garante que a porta esta livre (mata processo antigo se necessario)
     _check_startup_port()
 
-    # Detecta impressoras em background — servidor ja sobe enquanto isso
-    threading.Thread(target=_startup_detect, daemon=True).start()
+    # Detecta impressoras ANTES de subir o servidor — garante _cached_printer pronto
+    _startup_detect()
 
     # Polling (somente se habilitado explicitamente)
     if ENABLE_POLLING:
         threading.Thread(target=_polling_loop, daemon=True).start()
 
-    server = ThreadingHTTPServer(("localhost", AGENT_PORT), PrintHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", AGENT_PORT), PrintHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
