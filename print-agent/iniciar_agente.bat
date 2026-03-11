@@ -3,12 +3,12 @@ title Agente de Impressao Zebra — Warehouse Picker
 cd /d "%~dp0"
 
 :: =====================================================================
-:: URL do backend — aponte para o servidor de producao ou local
-:: Producao Railway: https://SEU-APP.up.railway.app/api
-:: Local:            http://localhost:8001/api
+:: URL do backend — altere conforme o ambiente:
+:: Local:   http://localhost:8001/api   (padrao)
+:: Railway: https://SEU-APP.up.railway.app/api
 :: =====================================================================
 if not defined BACKEND_URL (
-    set BACKEND_URL=https://SEU-APP.up.railway.app/api
+    set BACKEND_URL=http://localhost:8001/api
 )
 
 echo.
