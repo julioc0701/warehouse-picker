@@ -202,6 +202,22 @@ export default function Supervisor() {
           </button>
         </div>
 
+        {/* Shortage Report */}
+        <div className="bg-white rounded-2xl shadow p-6 flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold">Relatório de Faltas</h2>
+            <p className="text-gray-500 text-sm mt-0.5">
+              SKUs com falta de estoque consolidados das listas concluídas.
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/shortage-report')}
+            className="py-3 px-6 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 whitespace-nowrap"
+          >
+            ⚠ Ver Faltas
+          </button>
+        </div>
+
         {/* Sessions monitor */}
         <div className="bg-white rounded-2xl shadow p-6">
           <div className="flex justify-between items-center mb-4">
