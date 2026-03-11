@@ -5,14 +5,12 @@ import { api } from '../api/client'
 export default function SessionSelect() {
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
-  const [claiming, setClaiming] = useState(null)
   const navigate = useNavigate()
   const operator = JSON.parse(sessionStorage.getItem('operator') || 'null')
 
   const [searchBarcode, setSearchBarcode] = useState('')
   const [searchResult, setSearchResult] = useState(null)  // null | result object
   const [searching, setSearching] = useState(false)
-  const [claimError, setClaimError] = useState(null)
   const searchRef = useRef()
   const dismissTimer = useRef()
 
@@ -48,23 +46,10 @@ export default function SessionSelect() {
     s => s.operator_id === operator?.id && s.status === 'completed'
   )
 
-  async function claim(sessionId, session) {
-    // Se já é minha lista reservada, navega direto sem re-claim
-    if (session?.operator_id === operator?.id) {
-      navigate(`/sessions/${sessionId}/items`)
-      return
-    }
-    setClaiming(sessionId)
-    setClaimError(null)
-    try {
-      await api.claimSession(sessionId, operator.id)
-      navigate(`/sessions/${sessionId}/items`)
-    } catch (err) {
-      setClaiming(null)
-      setClaimError(err.message)
-      setTimeout(() => setClaimError(null), 4000)
-      load()
-    }
+  // Navega direto para a lista — sem reservar antecipadamente.
+  // A reserva (operator_id) só acontece no primeiro scan, via backend.
+  function openSession(sessionId) {
+    navigate(`/sessions/${sessionId}/items`)
   }
 
   async function handleBarcodeSearch(e) {
@@ -79,11 +64,8 @@ export default function SessionSelect() {
       const result = await api.findByBarcode(code, operator.id)
 
       if (result.action === 'open') {
-        const { session_id, operator_id: sessionOp } = result.best_match
-        // Claim session if it has no operator yet
-        if (!sessionOp) {
-          await api.claimSession(session_id, operator.id)
-        }
+        const { session_id } = result.best_match
+        // Navega direto sem claim — a reserva ocorre no primeiro scan
         navigate(`/picking/${session_id}?sku=${encodeURIComponent(result.sku)}`)
         return
       }
@@ -223,32 +205,22 @@ export default function SessionSelect() {
             <p className="text-gray-400 text-center mt-4">Nenhuma outra lista disponível.</p>
           )}
 
-          {claimError && (
-            <div className="mb-4 rounded-2xl px-5 py-4 text-base font-medium bg-red-50 border-2 border-red-300 text-red-800">
-              <p className="font-bold text-lg">✗ {claimError}</p>
-            </div>
-          )}
-
           <div className="flex flex-col gap-4">
-            {available.map(s => {
-              const isClaiming = claiming === s.id
-              return (
+            {available.map(s => (
                 <button
                   key={s.id}
-                  onClick={() => claim(s.id, s)}
-                  disabled={!!claiming}
-                  className="bg-white border-2 border-gray-200 hover:border-blue-400 rounded-2xl p-6 text-left shadow transition-colors disabled:opacity-60"
+                  onClick={() => openSession(s.id)}
+                  className="bg-white border-2 border-gray-200 hover:border-blue-400 rounded-2xl p-6 text-left shadow transition-colors"
                 >
                   <div className="flex justify-between items-center">
                     <span className="text-2xl font-bold">{s.session_code}</span>
                     <span className="text-gray-400 text-lg">
-                      {isClaiming ? 'Reservando...' : `${s.items_total} unidades`}
+                      {`${s.items_total} unidades`}
                     </span>
                   </div>
                   <ProgressBar picked={s.items_picked} total={s.items_total} />
                 </button>
-              )
-            })}
+            ))}
           </div>
 
           {/* Minhas listas concluídas */}
