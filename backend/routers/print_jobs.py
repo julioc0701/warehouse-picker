@@ -4,14 +4,14 @@ Fila de impressão — print_jobs
 GET  /print-jobs/pending          → agente local: busca jobs PENDING
 PATCH /print-jobs/{id}            → agente local: atualiza status
 GET  /print-jobs?session_id=&sku= → frontend: consulta status do job atual
-POST /print-jobs                  → frontend: cria/repete um job manualmente
+POST /print-jobs                  → frontend: cria job com ZPL gerado
 """
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
-from models import PrintJob, Label
+from models import PrintJob, PickingItem
 
 router = APIRouter()
 
@@ -22,12 +22,6 @@ router = APIRouter()
 
 @router.get("/pending")
 def get_pending_jobs(db: DBSession = Depends(get_db)):
-    """
-    Retorna todos os jobs com status PENDING.
-    Chamado pelo agente local a cada N segundos.
-    Também reseta jobs PRINTING há mais de 5 min (crash recovery).
-    """
-    from sqlalchemy import and_
     from datetime import timedelta
 
     # Crash recovery: se ficou PRINTING por mais de 5 min, volta para PENDING
@@ -57,14 +51,13 @@ def get_pending_jobs(db: DBSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 class UpdateJobBody(BaseModel):
-    status: str          # PRINTING | PRINTED | ERROR
+    status: str
     printer_name: str | None = None
     error_msg: str | None = None
 
 
 @router.patch("/{job_id}")
 def update_job(job_id: int, body: UpdateJobBody, db: DBSession = Depends(get_db)):
-    """Agente chama este endpoint para atualizar o status do job."""
     job = db.query(PrintJob).filter(PrintJob.id == job_id).first()
     if not job:
         raise HTTPException(404, "Job não encontrado")
@@ -78,17 +71,16 @@ def update_job(job_id: int, body: UpdateJobBody, db: DBSession = Depends(get_db)
         job.printer_name = body.printer_name
     if body.error_msg:
         job.error_msg = body.error_msg
+
     if body.status == "PRINTED":
         job.printed_at = datetime.utcnow()
-        # Marca as etiquetas do Label como impressas também
-        labels = (
-            db.query(Label)
-            .filter(Label.session_id == job.session_id, Label.sku == job.sku)
-            .all()
-        )
-        for lb in labels:
-            lb.printed = True
-            lb.printed_at = job.printed_at
+        # Marca o PickingItem como impresso
+        item = db.query(PickingItem).filter(
+            PickingItem.session_id == job.session_id,
+            PickingItem.sku == job.sku,
+        ).first()
+        if item:
+            item.labels_printed = True
 
     db.commit()
     return _job_dict(job)
@@ -104,10 +96,6 @@ def get_job_status(
     sku: str = Query(...),
     db: DBSession = Depends(get_db),
 ):
-    """
-    Retorna o job mais recente para o par session_id+sku.
-    Frontend faz polling a cada 3 s enquanto status != PRINTED|ERROR.
-    """
     job = (
         db.query(PrintJob)
         .filter(PrintJob.session_id == session_id, PrintJob.sku == sku)
@@ -120,22 +108,28 @@ def get_job_status(
 
 
 # ---------------------------------------------------------------------------
-# Frontend: cria job manualmente (retry ou primeira impressão manual)
+# Frontend: cria job com ZPL gerado dinamicamente
 # ---------------------------------------------------------------------------
 
 class CreateJobBody(BaseModel):
     session_id: int
     sku: str
+    zpl_content: str
     operator_id: int | None = None
 
 
 @router.post("")
 def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
-    """
-    Cria um job de impressão manualmente.
-    Usado para: retry após erro, impressão manual quando automática falhou.
-    Não cria duplicata se já existir job PENDING ou PRINTING.
-    """
+    if not body.zpl_content.strip():
+        raise HTTPException(400, "ZPL vazio")
+
+    # Cancela jobs anteriores com erro para permitir retry
+    db.query(PrintJob).filter(
+        PrintJob.session_id == body.session_id,
+        PrintJob.sku == body.sku,
+        PrintJob.status == "ERROR",
+    ).delete()
+
     # Bloqueia duplicata em andamento
     active = (
         db.query(PrintJob)
@@ -149,21 +143,10 @@ def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
     if active:
         return _job_dict(active)
 
-    # Busca ZPL das etiquetas
-    labels = (
-        db.query(Label)
-        .filter(Label.session_id == body.session_id, Label.sku == body.sku)
-        .order_by(Label.id)
-        .all()
-    )
-    if not labels:
-        raise HTTPException(404, f"Nenhuma etiqueta cadastrada para SKU '{body.sku}'")
-
-    zpl = "\n".join(lb.zpl_content for lb in labels if lb.zpl_content)
     job = PrintJob(
         session_id=body.session_id,
         sku=body.sku,
-        zpl_content=zpl,
+        zpl_content=body.zpl_content,
         operator_id=body.operator_id,
         status="PENDING",
     )

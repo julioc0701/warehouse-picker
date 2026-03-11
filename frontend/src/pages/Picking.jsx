@@ -21,9 +21,6 @@ const STATUS_LABEL = {
   out_of_stock: '✗ Sem estoque',
 }
 
-// Endereço do agente local de impressão instalado na máquina do operador
-const PRINT_AGENT_URL = 'http://127.0.0.1:9100/print'
-
 /**
  * Gera um bloco ZPL 2-up: duas etiquetas idênticas lado a lado numa bobina dupla.
  * Layout esquerdo: X base ~30 | Layout direito: X base ~350
@@ -271,16 +268,17 @@ export default function Picking() {
   }
 
   /**
-   * Gera o ZPL dinamicamente a partir dos dados do item e envia ao agente local
-   * (ZebraPrintAgent.exe) em http://127.0.0.1:9100/print.
+   * Gera ZPL a partir dos dados do item e envia à fila do backend.
+   * O ZebraAgent-WP.exe (rodando na máquina do operador) faz polling no
+   * backend e imprime — sem comunicação direta browser→agente, o que
+   * permitiria o bloqueio Mixed Content em produção (HTTPS→HTTP).
    *
-   * - Todos os labels são concatenados em um único payload → 1 POST atômico.
-   * - mode: 'no-cors' evita bloqueio CORS (o agente não devolve ACAO headers).
-   *   Se o agente estiver desligado, fetch() lança TypeError normalmente.
-   * - Proteção contra dupla impressão via item.labels_printed.
+   * Fluxo: POST /api/print-jobs → agente faz polling → PATCH PRINTED
+   *        → backend seta labels_printed=true → frontend detecta no poll
+   *
+   * Proteção contra dupla impressão via item.labels_printed.
    */
   async function autoPrintLabels(pickedItem, force = false) {
-    // Proteção contra dupla impressão — ignorada se force=true (botão Reimprimir)
     if (!force && pickedItem.labels_printed) {
       setPrintStatus('done')
       return
@@ -302,24 +300,22 @@ export default function Picking() {
       const numBlocks = Math.ceil(qty / 2)
       const fullZpl = Array.from({ length: numBlocks }, () => singleBlock).join('\n')
 
-      await fetch(PRINT_AGENT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: fullZpl,
-        mode: 'no-cors',
-        signal: AbortSignal.timeout(30000),
-      })
+      // Envia ZPL para a fila do backend
+      await api.createPrintJob(sessionId, pickedItem.sku, fullZpl, operator?.id)
 
-      // Marca como impresso no backend
-      await api.markPrinted(sessionId, pickedItem.sku)
-      setPrintStatus('done')
+      // Polling até PRINTED ou ERROR (máx 60s)
+      const deadline = Date.now() + 60000
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 2000))
+        const job = await api.getPrintJobStatus(sessionId, pickedItem.sku)
+        if (!job) break
+        if (job.status === 'PRINTED') { setPrintStatus('done'); return }
+        if (job.status === 'ERROR') throw new Error(job.error_msg || 'Erro na impressão')
+      }
+      throw new Error('Tempo esgotado. Verifique se o ZebraAgent-WP.exe está aberto e configurado com a URL do servidor.')
 
     } catch (err) {
-      const isConnectionError = err instanceof TypeError || err.name === 'AbortError'
-      const msg = isConnectionError
-        ? 'ZebraPrintAgent.exe não está aberto. Abra o programa e clique em "Tentar novamente".'
-        : (err?.message || 'Erro desconhecido na impressão')
-      setPrintError(msg)
+      setPrintError(err?.message || 'Erro desconhecido na impressão')
       setPrintStatus('error')
     }
   }
