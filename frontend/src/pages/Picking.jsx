@@ -285,9 +285,13 @@ export default function Picking() {
     setDialog(null)
     if (item) {
       await api.addBarcode(sessionId, code, item.sku, operator.id)
-      const res = scanMode === 'box'
-        ? await api.scanBox(sessionId, code, operator.id, focusSku || item.sku)
-        : await api.scan(sessionId, code, operator.id, focusSku || null)
+      if (scanMode === 'box') {
+        // Barcode acabou de ser vinculado — desfaz o +1 do scan original e abre dialog de quantidade
+        await api.undo(sessionId, item.sku, operator.id)
+        setDialog({ type: 'box_qty', data: { code } })
+        return
+      }
+      const res = await api.scan(sessionId, code, operator.id, focusSku || null)
       updateFromResponse(res, code)
     }
     focusInput()

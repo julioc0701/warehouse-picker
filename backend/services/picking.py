@@ -47,7 +47,13 @@ def process_scan(
     )
     if item is None:
         # Barcode é conhecido mas pertence a um SKU que não está nesta sessão
-        return {"status": "wrong_session", "barcode": barcode, "sku": sku}
+        bc = db.query(Barcode).filter(Barcode.barcode == barcode).first()
+        description = (bc.description if bc else None) or (
+            db.query(PickingItem.description)
+            .filter(PickingItem.sku == sku, PickingItem.description.isnot(None))
+            .scalar()
+        )
+        return {"status": "wrong_session", "barcode": barcode, "sku": sku, "description": description}
 
     current = get_current_item(db, session_id)
 
@@ -114,7 +120,13 @@ def process_scan_box(
     )
     if item is None:
         # Barcode é conhecido mas pertence a um SKU que não está nesta sessão
-        return {"status": "wrong_session", "barcode": barcode, "sku": sku}
+        bc = db.query(Barcode).filter(Barcode.barcode == barcode).first()
+        description = (bc.description if bc else None) or (
+            db.query(PickingItem.description)
+            .filter(PickingItem.sku == sku, PickingItem.description.isnot(None))
+            .scalar()
+        )
+        return {"status": "wrong_session", "barcode": barcode, "sku": sku, "description": description}
 
     current = get_current_item(db, session_id)
     in_focus_mode = focus_sku is not None and focus_sku == sku

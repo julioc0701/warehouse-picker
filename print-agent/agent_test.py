@@ -23,6 +23,10 @@ import json
 import os
 import sys
 
+# Force UTF-8 output so Windows terminal does not choke on special chars
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 AGENT_PORT = int(os.getenv("PRINT_AGENT_PORT", "6543"))
 OUTPUT_DIR = Path(__file__).parent / "test_output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -109,11 +113,11 @@ class MockPrintHandler(BaseHTTPRequestHandler):
             path = save_zpl(zpl)
 
             print()
-            print("─" * 55)
-            print(f"  ✅ ZPL recebido — {datetime.now().strftime('%H:%M:%S')}")
+            print("-" * 55)
+            print(f"  [OK] ZPL recebido — {datetime.now().strftime('%H:%M:%S')}")
             print(summarize_zpl(zpl))
             print(f"  Arquivo    : {path.name}")
-            print("─" * 55)
+            print("-" * 55)
 
             self._send_json(200, {"status": "ok", "printer": "TEST (arquivo salvo)"})
         else:
@@ -125,13 +129,13 @@ class MockPrintHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("=" * 55)
-    print("  🧪 Agente de TESTE — Warehouse Picker")
+    print("  [TESTE] Agente de Impressao — Warehouse Picker")
     print("=" * 55)
     print(f"  URL         : http://localhost:{AGENT_PORT}")
-    print(f"  Saída ZPL   : {OUTPUT_DIR}/")
+    print(f"  Saida ZPL   : {OUTPUT_DIR}/")
     print()
-    print("  Faça a bipagem no sistema.")
-    print("  Cada ZPL recebido será salvo em test_output/")
+    print("  Faca a bipagem no sistema.")
+    print("  Cada ZPL recebido sera salvo em test_output/")
     print("  Pressione Ctrl+C para parar.")
     print("=" * 55)
 
@@ -139,5 +143,5 @@ if __name__ == "__main__":
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print(f"\n  Agente encerrado. {_counter} etiqueta(s) salva(s) em {OUTPUT_DIR}/")
+        print(f"\n  Agente encerrado. {_counter} etiqueta(s) salva(s) em {OUTPUT_DIR}/".encode("utf-8", errors="replace").decode())
         sys.exit(0)

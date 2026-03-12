@@ -31,14 +31,14 @@ export default function SessionSelect() {
       .finally(() => setLoading(false))
   }
 
-  // Listas que este operador já está trabalhando
+  // Listas que este operador já reservou ou está trabalhando
   const mySessions = sessions.filter(
-    s => s.operator_id === operator?.id && s.status === 'in_progress'
+    s => s.operator_id === operator?.id && s.status !== 'completed'
   )
 
-  // Listas disponíveis: abertas sem operador OU reservadas por mim mas sem nenhum scan ainda
+  // Listas disponíveis: abertas sem nenhum operador
   const available = sessions.filter(s =>
-    s.status === 'open' && (!s.operator_id || s.operator_id === operator?.id)
+    s.status === 'open' && !s.operator_id
   )
 
   // Listas que este operador já concluiu
@@ -46,9 +46,13 @@ export default function SessionSelect() {
     s => s.operator_id === operator?.id && s.status === 'completed'
   )
 
-  // Navega direto para a lista — sem reservar antecipadamente.
-  // A reserva (operator_id) só acontece no primeiro scan, via backend.
-  function openSession(sessionId) {
+  // Reserva a sessão para este operador ao abrir
+  async function openSession(sessionId) {
+    try {
+      await api.claimSession(sessionId, operator.id)
+    } catch {
+      // Já reservada (primeiro scan já ocorreu) — tudo bem, só navegar
+    }
     navigate(`/sessions/${sessionId}/items`)
   }
 
