@@ -9,6 +9,7 @@ class Operator(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    pin_code: Mapped[str] = mapped_column(String(20), nullable=False, default="1234")
     badge: Mapped[str | None] = mapped_column(String(100), unique=True)
     sessions: Mapped[list["Session"]] = relationship(back_populates="operator")
 

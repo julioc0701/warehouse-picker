@@ -22,7 +22,8 @@ export const api = {
   // Operators
   getOperators: () => req('GET', '/operators/'),
   getOperatorByBadge: (badge) => req('GET', `/operators/badge/${badge}`),
-  createOperator: (name, badge) => req('POST', '/operators/', { name, badge }),
+  createOperator: (name, badge, pin_code) => req('POST', '/operators/', { name, badge, pin_code }),
+  loginOperator: (operatorId, pinCode) => req('POST', '/operators/login', { operator_id: operatorId, pin_code: pinCode }),
 
   // Sessions
   getSessions: () => req('GET', '/sessions/'),

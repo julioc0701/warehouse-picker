@@ -6,7 +6,7 @@ from database import init_db, get_db
 from routers import sessions, operators, labels, printers, seed, barcodes, print_jobs
 from models import Operator
 
-app = FastAPI(title="Warehouse Picker API", version="1.0.0")
+app = FastAPI(title="NVS API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,7 +34,7 @@ def on_startup():
     try:
         for name in DEFAULT_OPERATORS:
             if not db.query(Operator).filter(Operator.name == name).first():
-                db.add(Operator(name=name))
+                db.add(Operator(name=name, pin_code="1234"))
         db.commit()
     finally:
         db.close()

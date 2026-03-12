@@ -1,5 +1,5 @@
 """
-Agente de Teste — Warehouse Picker
+# Agente de Teste — NVS
 ====================================
 Substituto do agent.py para testar SEM impressora física.
 
@@ -129,7 +129,7 @@ class MockPrintHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("=" * 55)
-    print("  [TESTE] Agente de Impressao — Warehouse Picker")
+    print("  [TESTE] Agente de Impressao — NVS")
     print("=" * 55)
     print(f"  URL         : http://localhost:{AGENT_PORT}")
     print(f"  Saida ZPL   : {OUTPUT_DIR}/")

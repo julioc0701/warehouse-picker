@@ -99,7 +99,9 @@ async def upload_session(
         raise HTTPException(400, "Nenhum item encontrado no PDF. Verifique se é uma lista de picking do Mercado Livre.")
 
     # ── Replace all previous data ──────────────────────────────────────────
-    _clear_all_sessions(db)
+    # CUIDADO: _clear_all_sessions() foi REMOVIDO para evitar perda de histórico.
+    # Novas sessões são agora apenas "acrescentadas" ao banco.
+    # _clear_all_sessions(db)
 
     # Split items into batches of max 1000 units, sorted by qty desc
     batches = split_into_batches(items_data, max_units=1000)
@@ -188,7 +190,11 @@ def claim_session(session_id: int, body: ClaimBody, db: DBSession = Depends(get_
 
 @router.get("/")
 def list_sessions(db: DBSession = Depends(get_db)):
-    sessions = db.query(Session).order_by(Session.session_code).all()
+    # Para não sobrecarregar com histórico infinito, limitaremos as sessões aqui.
+    # Retorna o histórico das últimas 100 sessões criadas.
+    sessions = db.query(Session).order_by(Session.id.desc()).limit(100).all()
+    # Inverte a lista para mostrar a ordem correta no frontend (antigas primeiro) se necessário,
+    # mas o frontend aceita desordenado de forma tranquila.
     operators = {o.id: o.name for o in db.query(Operator).all()}
     result = []
     for s in sessions:

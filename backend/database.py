@@ -2,9 +2,9 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# In production (Railway), set DATABASE_URL=sqlite:////data/warehouse.db
+# In production (Railway), set DATABASE_URL=sqlite:////data/warehouse_v2.db
 # and mount a persistent volume at /data
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./warehouse.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./warehouse_v2.db")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -33,6 +33,11 @@ def init_db():
         cols = [c["name"] for c in insp.get_columns("barcodes")]
         if "description" not in cols:
             conn.execute(text("ALTER TABLE barcodes ADD COLUMN description VARCHAR(500)"))
+            conn.commit()
+
+        op_cols = [c["name"] for c in insp.get_columns("operators")]
+        if "pin_code" not in op_cols:
+            conn.execute(text("ALTER TABLE operators ADD COLUMN pin_code VARCHAR(20) NOT NULL DEFAULT '1234'"))
             conn.commit()
 
         picking_cols = [c["name"] for c in insp.get_columns("picking_items")]

@@ -9,7 +9,12 @@ router = APIRouter()
 
 class OperatorCreate(BaseModel):
     name: str
+    pin_code: str | None = "1234"
     badge: str | None = None
+
+class OperatorLogin(BaseModel):
+    operator_id: int
+    pin_code: str
 
 
 @router.get("/")
@@ -20,11 +25,21 @@ def list_operators(db: DBSession = Depends(get_db)):
 
 @router.post("/", status_code=201)
 def create_operator(body: OperatorCreate, db: DBSession = Depends(get_db)):
-    op = Operator(name=body.name, badge=body.badge)
+    op = Operator(name=body.name, badge=body.badge, pin_code=body.pin_code or "1234")
     db.add(op)
     db.commit()
     db.refresh(op)
     return {"id": op.id, "name": op.name, "badge": op.badge}
+
+@router.post("/login", status_code=200)
+def login_operator(body: OperatorLogin, db: DBSession = Depends(get_db)):
+    op = db.query(Operator).filter(Operator.id == body.operator_id).first()
+    if not op:
+        raise HTTPException(404, "Operador não encontrado")
+    if op.pin_code != body.pin_code:
+        raise HTTPException(401, "PIN Incorreto")
+    
+    return {"status": "ok", "operator": {"id": op.id, "name": op.name, "badge": op.badge}}
 
 
 @router.get("/badge/{badge}")

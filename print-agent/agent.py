@@ -1,5 +1,5 @@
 """
-Agente Local de Impressao Zebra — Warehouse Picker
+# Agente Local de Impressao Zebra — NVS
 ====================================================
 Execute este script no computador de cada operador.
 Ele expoe http://localhost:9100 e envia ZPL para a Zebra ZD220 via USB.
@@ -39,12 +39,22 @@ import threading
 import time
 import urllib.request
 
-AGENT_VERSION   = "1.3"
+AGENT_VERSION   = "1.4" # Atualizado para 1.4 por segurança CORS
 AGENT_PORT      = int(os.getenv("PRINT_AGENT_PORT", "9100"))
 PRINTER_NAME    = os.getenv("PRINTER_NAME", "")   # vazio = auto-deteccao
 ENABLE_POLLING  = os.getenv("ENABLE_POLLING", "0").strip() == "1"
 BACKEND_URL     = os.getenv("BACKEND_URL", "http://localhost:8001/api")
 POLL_INTERVAL   = int(os.getenv("POLL_INTERVAL", "5"))
+
+# Allowed Origins para o FrontEnd Web — Proteção contra comandos indesejados no navegador
+ALLOWED_ORIGINS = [
+    "http://localhost:5173", 
+    "http://localhost:5174", 
+    "http://localhost:5175",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175"
+]
 
 # ---------------------------------------------------------------------------
 # Cache de impressoras — detectado uma vez no startup, evita PowerShell lento
@@ -296,7 +306,7 @@ _TEST_ZPL = (
     "^PW400"
     "^LL200"
     "^FO20,20^A0N,40,40^FDTeste Zebra ZD220^FS"
-    "^FO20,80^A0N,28,28^FDWarehouse Picker OK^FS"
+    "^FO20,80^A0N,28,28^FDNVS OK^FS"
     "^XZ"
 )
 
@@ -317,7 +327,15 @@ class PrintHandler(BaseHTTPRequestHandler):
             pass
 
     def _cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin")
+        if origin in ALLOWED_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", origin)
+        else:
+            # Se não for uma requisição de navegador direto com Origin amigável, não abrimos CORS.
+            # Postman ou scripts backend sem bloqueio CORS ainda funcionarão localmente.
+            # O frontend web não enviará ZPL via XHR se não confirmarmos o Origin original.
+            self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGINS[0])
+            
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
@@ -514,7 +532,7 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     print("=" * 60)
-    print(f"  Agente de Impressao Zebra — Warehouse Picker v{AGENT_VERSION}")
+    print(f"  Agente de Impressao Zebra — NVS v{AGENT_VERSION}")
     print("=" * 60)
 
     # Verifica metodo de impressao disponivel

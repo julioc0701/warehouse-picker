@@ -73,9 +73,28 @@ def process_scan(
     if item.qty_picked >= item.qty_required:
         return {"status": "excess", "item": _item_dict(item)}
 
-    # Valid scan — increment
-    item.qty_picked += 1
-    item.status = "in_progress"
+    # Valid scan — increment ATOMICALLY to prevent race conditions
+    from sqlalchemy import update
+    stmt = (
+        update(PickingItem)
+        .where(PickingItem.id == item.id, PickingItem.qty_picked < PickingItem.qty_required)
+        .values(
+            qty_picked=PickingItem.qty_picked + 1,
+            status="in_progress"
+        )
+    )
+    res = db.execute(stmt)
+
+    if res.rowcount == 0:
+        # Se 0 linhas foram afetadas, significa que ou não existe item ou ele já atingiu a cota `qty_picked >= qty_required`
+        # Isso protege contra duplo scan concorrente
+        db.refresh(item)
+        if item.qty_picked >= item.qty_required:
+            return {"status": "excess", "item": _item_dict(item)}
+        return {"status": "error", "message": "Falha de concorrência no incremento"}
+
+    # Atualiza a referência de item na memória com banco atualizado
+    db.refresh(item)
 
     # Marca sessão como in_progress no primeiro scan (claim não muda mais o status)
     sess = db.query(Session).filter(Session.id == session_id).first()
@@ -143,9 +162,26 @@ def process_scan_box(
 
     # Mark full quantity as picked in one shot
     delta = item.qty_required - item.qty_picked
-    item.qty_picked = item.qty_required
-    item.status = "complete"
-    item.completed_at = datetime.utcnow()
+    if delta <= 0:
+        return {"status": "excess", "item": _item_dict(item)}
+
+    from sqlalchemy import update
+    stmt = (
+        update(PickingItem)
+        .where(PickingItem.id == item.id, PickingItem.qty_picked < PickingItem.qty_required)
+        .values(
+            qty_picked=PickingItem.qty_required,
+            status="complete",
+            completed_at=datetime.utcnow()
+        )
+    )
+    res = db.execute(stmt)
+
+    if res.rowcount == 0:
+        db.refresh(item)
+        return {"status": "excess", "item": _item_dict(item)}
+
+    db.refresh(item)
 
     # Marca sessão como in_progress no primeiro scan (claim não muda mais o status)
     sess = db.query(Session).filter(Session.id == session_id).first()

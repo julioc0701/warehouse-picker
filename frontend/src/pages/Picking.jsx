@@ -63,6 +63,23 @@ function buildZplBlock(mlCode, description, sku) {
   )
 }
 
+function buildZplBlockSingle(mlCode, description, sku) {
+  const safeDesc = (description || '')
+    .replace(/\^/g, ' ')
+    .replace(/~/g, ' ')
+    .substring(0, 120)
+  return (
+    '^XA^CI28\n' +
+    '^LH0,0\n' +
+    `^FO30,15^BY2,,0^BCN,54,N,N^FD${mlCode}^FS\n` +
+    `^FO105,75^A0N,20,25^FH^FD${mlCode}^FS\n` +
+    `^FO105,76^A0N,20,25^FH^FD${mlCode}^FS\n` +
+    `^FO16,115^A0N,18,18^FB300,2,2,L^FH^FD${safeDesc}^FS\n` +
+    `^FO16,172^A0N,18,18^FH^FDSKU: ${sku}^FS\n` +
+    '^XZ'
+  )
+}
+
 export default function Picking() {
   const { sessionId } = useParams()
   const [searchParams] = useSearchParams()
@@ -376,17 +393,19 @@ export default function Picking() {
         return
       }
 
-      const singleBlock = buildZplBlock(
-        pickedItem.ml_code || pickedItem.sku,
-        pickedItem.description,
-        pickedItem.sku,
-      )
-      // Bobina 2-up: cada bloco ZPL imprime 2 etiquetas físicas lado a lado.
-      // Quantidade de blocos = ceil(qty_picked / 2)
-      // Exemplos: qty=6 → 3 blocos (6 etiquetas) | qty=5 → 3 blocos (6 etiquetas)
-      const qty = pickedItem.qty_picked || 1
-      const numBlocks = Math.ceil(qty / 2)
-      const fullZpl = Array.from({ length: numBlocks }, () => singleBlock).join('\n')
+      const mlCode = pickedItem.ml_code || pickedItem.sku
+      const desc = pickedItem.description
+      const sku = pickedItem.sku
+
+      const qty       = pickedItem.qty_picked || 1
+      const fullPairs = Math.floor(qty / 2)
+      const remainder = qty % 2
+
+      const blocks = [
+        ...Array.from({ length: fullPairs }, () => buildZplBlock(mlCode, desc, sku)),
+        ...(remainder === 1 ? [buildZplBlockSingle(mlCode, desc, sku)] : []),
+      ]
+      const fullZpl = blocks.join('\n')
 
       await fetch(PRINT_AGENT_URL, {
         method: 'POST',
@@ -797,6 +816,9 @@ function BoxQtyDialog({ item, onConfirm, onCancel }) {
             max={item.qty_required}
             value={qty}
             onChange={e => setQty(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleConfirm()
+            }}
             onFocus={e => e.target.select()}
             autoFocus
             className="text-center text-4xl font-bold border-2 border-gray-300 focus:border-blue-500 rounded-xl py-4 outline-none"

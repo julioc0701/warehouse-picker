@@ -1,5 +1,5 @@
 @echo off
-echo === Warehouse Picker - Setup ===
+echo === NVS - Setup ===
 
 echo.
 echo [1/3] Installing Python dependencies...

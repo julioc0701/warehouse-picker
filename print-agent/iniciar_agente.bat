@@ -1,5 +1,5 @@
 @echo off
-title Agente de Impressao Zebra — Warehouse Picker
+title Agente de Impressao Zebra — NVS
 cd /d "%~dp0"
 
 :: =====================================================================
