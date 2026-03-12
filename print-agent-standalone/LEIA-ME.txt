@@ -1,0 +1,30 @@
+============================================================
+  AGENTE DE IMPRESSAO ZEBRA — WAREHOUSE PICKER
+============================================================
+
+PRE-REQUISITO (uma vez por maquina):
+  Instale o driver Zebra ZD220:
+  https://www.zebra.com -> Support -> ZD220 -> Drivers -> ZDesigner
+
+COMO USAR:
+  1. Conecte a impressora Zebra via USB e ligue-a
+  2. De duplo clique em "iniciar.bat"
+  3. Deixe a janela aberta enquanto estiver fazendo separacao
+
+CONFIGURACAO (somente se necessario):
+  - Edite "config.bat" para definir o nome da impressora
+    ou a URL do sistema (backend)
+
+DIAGNOSTICO:
+  Com o agente aberto, acesse no navegador:
+  http://localhost:9100/status   -> mostra estado e impressora detectada
+  http://localhost:9100/test     -> imprime etiqueta de teste
+  http://localhost:9100/refresh  -> re-detecta impressoras sem reiniciar
+
+SUPORTE:
+  Se a impressora nao for detectada automaticamente:
+  1. Abra "config.bat"
+  2. Defina PRINTER_NAME com o nome exato da impressora
+     (visivel em Windows -> Impressoras e Scanners)
+  3. Salve e reabra "iniciar.bat"
+============================================================
