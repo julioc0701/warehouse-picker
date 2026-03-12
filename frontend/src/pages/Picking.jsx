@@ -63,6 +63,7 @@ function buildZplBlock(mlCode, description, sku) {
   )
 }
 
+
 export default function Picking() {
   const { sessionId } = useParams()
   const [searchParams] = useSearchParams()
@@ -376,17 +377,18 @@ export default function Picking() {
         return
       }
 
-      const singleBlock = buildZplBlock(
-        pickedItem.ml_code || pickedItem.sku,
-        pickedItem.description,
-        pickedItem.sku,
-      )
+      const mlCode = pickedItem.ml_code || pickedItem.sku
+      const desc   = pickedItem.description
+      const sku    = pickedItem.sku
+
       // Bobina 2-up: cada bloco ZPL imprime 2 etiquetas físicas lado a lado.
-      // Quantidade de blocos = ceil(qty_picked / 2)
-      // Exemplos: qty=6 → 3 blocos (6 etiquetas) | qty=5 → 3 blocos (6 etiquetas)
-      const qty = pickedItem.qty_picked || 1
+      // Quantidade de blocos = ceil(qty_picked / 2).
+      // Em qtd ímpar, a última etiqueta do lado direito sai em branco (aceitável).
+      // Exemplos: qty=3 → 2 blocos (3 reais + 1 branca) | qty=4 → 2 blocos (4 reais)
+      const qty       = pickedItem.qty_picked || 1
       const numBlocks = Math.ceil(qty / 2)
-      const fullZpl = Array.from({ length: numBlocks }, () => singleBlock).join('\n')
+      const block     = buildZplBlock(mlCode, desc, sku)
+      const fullZpl   = Array.from({ length: numBlocks }, () => block).join('\n')
 
       await fetch(PRINT_AGENT_URL, {
         method: 'POST',
