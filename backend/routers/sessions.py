@@ -305,8 +305,8 @@ def find_by_barcode(
 @router.get("/shortage-report")
 def shortage_report(db: DBSession = Depends(get_db)):
     """
-    Retorna todos os SKUs com falta (shortage_qty > 0) das sessões concluídas,
-    agregados por SKU com a soma total de unidades faltantes.
+    Retorna todos os SKUs com falta (shortage_qty > 0) de todas as sessões
+    (em andamento e concluídas), agregados por SKU.
     """
     from sqlalchemy import func
 
@@ -318,7 +318,6 @@ def shortage_report(db: DBSession = Depends(get_db)):
         )
         .join(Session, Session.id == PickingItem.session_id)
         .filter(
-            Session.status == "completed",
             PickingItem.shortage_qty > 0,
         )
         .group_by(PickingItem.sku, PickingItem.description)

@@ -21,7 +21,7 @@ export default function ShortageReport() {
         <div>
           <h1 className="text-4xl font-bold">Relatório de Faltas</h1>
           <p className="text-gray-500 text-sm mt-1">
-            SKUs com falta de estoque nas listas concluídas
+            SKUs com falta de estoque — listas em andamento e concluídas
           </p>
         </div>
         <button
@@ -39,7 +39,7 @@ export default function ShortageReport() {
 
         {!loading && items.length === 0 && (
           <p className="text-center text-gray-400 py-12 text-xl">
-            ✓ Nenhuma falta registrada nas listas concluídas.
+            ✓ Nenhuma falta registrada.
           </p>
         )}
 
