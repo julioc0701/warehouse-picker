@@ -53,25 +53,24 @@ _cached_printer: str | None = None
 _cached_all_printers: list[str] = []
 
 
-def _run_powershell(cmd: str, timeout: int = 10) -> str:
-    """Executa um comando PowerShell e retorna stdout."""
-    try:
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        return result.stdout.strip()
-    except Exception:
-        return ""
-
-
 def _detect_printers() -> tuple[str | None, list[str]]:
-    """Detecta todas as impressoras e a Zebra. Retorna (zebra_name, all_names)."""
+    """
+    Detecta todas as impressoras via win32print.EnumPrinters (sem PowerShell).
+    Retorna (zebra_name, all_names).
+    """
     if platform.system() != "Windows":
         return None, []
 
-    all_raw = _run_powershell("Get-Printer | Select-Object -ExpandProperty Name")
-    all_names = [line.strip() for line in all_raw.splitlines() if line.strip()]
+    try:
+        import win32print
+        import re
+        raw = win32print.EnumPrinters(
+            win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS
+        )
+        # raw = list of (flags, description, name, comment)
+        all_names = [entry[2] for entry in raw if entry[2]]
+    except Exception:
+        all_names = []
 
     zebra = PRINTER_NAME or None
     if not zebra:
