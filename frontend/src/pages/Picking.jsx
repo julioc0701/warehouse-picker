@@ -143,7 +143,19 @@ export default function Picking() {
 
     try {
       if (scanMode === 'box' && item) {
-        setDialog({ type: 'box_qty', data: { code } })
+        // Valida o barcode antes de abrir o dialog de quantidade
+        const res = await api.scan(sessionId, code, operator.id, focusSku || null)
+
+        if (res.status === 'ok') {
+          // Barcode válido — desfaz o +1 e abre dialog de quantidade
+          await api.undo(sessionId, item.sku, operator.id)
+          setDialog({ type: 'box_qty', data: { code } })
+          return
+        }
+
+        // complete com qty=1 já terminou; wrong_session / wrong_sku / unknown
+        // — tratados igual ao modo unitário
+        updateFromResponse(res, code)
         return
       }
 
