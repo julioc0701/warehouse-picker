@@ -1,0 +1,9 @@
+# Python Embeddable — grande demais para versionar (~25MB)
+python/
+
+# agent.py é cópia de print-agent/agent.py — gerado pelo montar_pacote.bat
+agent.py
+
+# Temporários de build
+*.zip
+get-pip.py
