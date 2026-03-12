@@ -349,6 +349,14 @@ class PrintHandler(BaseHTTPRequestHandler):
                 "all_printers": _cached_all_printers,
             })
 
+        elif self.path == "/health":
+            self._send_json(200, {
+                "service": "zebra-print-agent",
+                "status": "ok",
+                "version": AGENT_VERSION,
+                "printer_found": _cached_printer is not None,
+            })
+
         elif self.path == "/test":
             result = do_print(_TEST_ZPL)
             code = 200 if result["status"] == "ok" else 500
@@ -520,10 +528,11 @@ if __name__ == "__main__":
     print(f"  Porta        : {AGENT_PORT}")
     print(f"  Polling      : {'ATIVO — ' + BACKEND_URL if ENABLE_POLLING else 'desativado (padrao)'}")
     print()
+    print(f"  GET  /health   → health check (service + status)")
     print(f"  GET  /status   → estado atual")
     print(f"  GET  /refresh  → re-detecta impressoras sem reiniciar")
     print(f"  GET  /test     → imprime etiqueta de teste")
-    print(f"  POST /print    → imprime ZPL {{ zpl: '...' }}")
+    print(f"  POST /print    → imprime ZPL em modo RAW (text/plain)")
     print(f"  Ctrl+C         → encerrar")
     print("=" * 60)
     print()

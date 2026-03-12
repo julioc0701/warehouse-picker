@@ -22,7 +22,8 @@ const STATUS_LABEL = {
 }
 
 // Endereço do agente local de impressão instalado na máquina do operador
-const PRINT_AGENT_URL = 'http://127.0.0.1:9100/print'
+const PRINT_AGENT_BASE = 'http://127.0.0.1:9100'
+const PRINT_AGENT_URL = `${PRINT_AGENT_BASE}/print`
 
 /**
  * Gera um bloco ZPL 2-up: duas etiquetas idênticas lado a lado numa bobina dupla.
@@ -340,6 +341,21 @@ export default function Picking() {
     setPrintError(null)
 
     try {
+      // Valida que o agente correto está ativo antes de tentar imprimir
+      try {
+        const healthRes = await fetch(`${PRINT_AGENT_BASE}/health`, {
+          signal: AbortSignal.timeout(3000),
+        })
+        const health = await healthRes.json()
+        if (health.service !== 'zebra-print-agent' || health.status !== 'ok') {
+          throw new Error('agente incorreto')
+        }
+      } catch {
+        setPrintError('ZebraAgent-WP.exe não está aberto. Abra o programa e clique em "Tentar novamente".')
+        setPrintStatus('error')
+        return
+      }
+
       const singleBlock = buildZplBlock(
         pickedItem.ml_code || pickedItem.sku,
         pickedItem.description,
