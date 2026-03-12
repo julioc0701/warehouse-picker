@@ -301,6 +301,10 @@ export default function Picking() {
       } else if (qty < item.qty_required) {
         const res = await api.shortage(sessionId, item.sku, qty, operator.id)
         setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
+        // Imprime as etiquetas da quantidade encontrada (qty_picked = qty)
+        if (res.item?.labels_ready) {
+          autoPrintLabels(res.item)
+        }
         if (focusSku) {
           goBackToItems()
         } else {
