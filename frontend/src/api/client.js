@@ -23,6 +23,8 @@ export const api = {
   getOperators: () => req('GET', '/operators/'),
   getOperatorByBadge: (badge) => req('GET', `/operators/badge/${badge}`),
   createOperator: (name, badge, pin_code) => req('POST', '/operators/', { name, badge, pin_code }),
+  updateOperatorPin: (id, pinCode) => req('PUT', `/operators/${id}/pin`, { pin_code: pinCode }),
+  deleteOperator: (id) => req('DELETE', `/operators/${id}`),
   loginOperator: (operatorId, pinCode) => req('POST', '/operators/login', { operator_id: operatorId, pin_code: pinCode }),
 
   // Sessions

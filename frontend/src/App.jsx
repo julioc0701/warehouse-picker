@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
+import OperatorsManagement from './pages/OperatorsManagement'
 import SessionSelect from './pages/SessionSelect'
 import SessionItems from './pages/SessionItems'
 import Picking from './pages/Picking'
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/sessions/:sessionId/items" element={<SessionItems />} />
         <Route path="/picking/:sessionId" element={<Picking />} />
         <Route path="/supervisor" element={<Supervisor />} />
+        <Route path="/operators" element={<OperatorsManagement />} />
         <Route path="/master-data" element={<MasterData />} />
         <Route path="/shortage-report" element={<ShortageReport />} />
         <Route path="*" element={<Navigate to="/" />} />

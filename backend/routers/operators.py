@@ -20,7 +20,7 @@ class OperatorLogin(BaseModel):
 @router.get("/")
 def list_operators(db: DBSession = Depends(get_db)):
     ops = db.query(Operator).all()
-    return [{"id": o.id, "name": o.name, "badge": o.badge} for o in ops]
+    return [{"id": o.id, "name": o.name, "badge": o.badge, "pin_code": o.pin_code} for o in ops]
 
 
 @router.post("/", status_code=201)
@@ -48,3 +48,27 @@ def get_by_badge(badge: str, db: DBSession = Depends(get_db)):
     if not op:
         raise HTTPException(404, "Badge not found")
     return {"id": op.id, "name": op.name, "badge": op.badge}
+
+class OperatorPinUpdate(BaseModel):
+    pin_code: str
+
+@router.put("/{operator_id}/pin")
+def update_operator_pin(operator_id: int, body: OperatorPinUpdate, db: DBSession = Depends(get_db)):
+    op = db.query(Operator).filter(Operator.id == operator_id).first()
+    if not op:
+        raise HTTPException(404, "Operador não encontrado")
+    
+    op.pin_code = body.pin_code
+    db.commit()
+    db.refresh(op)
+    return {"status": "ok", "message": "PIN atualizado com sucesso"}
+
+@router.delete("/{operator_id}")
+def delete_operator(operator_id: int, db: DBSession = Depends(get_db)):
+    op = db.query(Operator).filter(Operator.id == operator_id).first()
+    if not op:
+        raise HTTPException(404, "Operador não encontrado")
+    
+    db.delete(op)
+    db.commit()
+    return {"status": "ok", "message": "Operador excluído com sucesso"}

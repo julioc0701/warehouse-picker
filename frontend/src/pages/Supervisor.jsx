@@ -218,6 +218,22 @@ export default function Supervisor() {
           </button>
         </div>
 
+        {/* Operators Management */}
+        <div className="bg-white rounded-2xl shadow p-6 flex justify-between items-center bg-blue-50/50">
+          <div>
+            <h2 className="text-2xl font-bold text-blue-900">Gerenciar Operadores</h2>
+            <p className="text-blue-700/70 text-sm mt-0.5">
+              Cadastre novos membros da equipe e redefina os PINs de acesso ao NVS.
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/operators')}
+            className="py-3 px-6 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 whitespace-nowrap shadow-sm"
+          >
+            👥 Painel de Acessos
+          </button>
+        </div>
+
         {/* Sessions monitor */}
         <div className="bg-white rounded-2xl shadow p-6">
           <div className="flex justify-between items-center mb-4">
