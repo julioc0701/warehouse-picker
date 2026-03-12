@@ -3,6 +3,9 @@ chcp 65001 >nul
 setlocal EnableDelayedExpansion
 title Montagem do print-agent-standalone
 
+:: ── Caminho completo do PowerShell (evita problema de PATH) ────────
+set PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe
+
 :: ── Configuracoes ──────────────────────────────────────────────────
 set PYTHON_VER=3.11.9
 set PYTHON_URL=https://www.python.org/ftp/python/%PYTHON_VER%/python-%PYTHON_VER%-embed-amd64.zip
@@ -24,17 +27,21 @@ if exist "%PYTHON_ZIP%" (
     echo [1/6] Python zip ja existe — pulando download.
 ) else (
     echo [1/6] Baixando Python %PYTHON_VER% Embeddable...
-    powershell -Command "Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile '%PYTHON_ZIP%'"
+    curl.exe -L --progress-bar -o "%PYTHON_ZIP%" "%PYTHON_URL%"
     if errorlevel 1 (
-        echo  ERRO: Falha no download. Verifique sua conexao com a internet.
-        pause & exit /b 1
+        echo  curl falhou, tentando PowerShell...
+        "%PS%" -Command "Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile '%PYTHON_ZIP%'"
+        if errorlevel 1 (
+            echo  ERRO: Falha no download. Verifique sua conexao com a internet.
+            pause & exit /b 1
+        )
     )
 )
 
 :: ── [2/6] Extrair Python Embeddable ───────────────────────────────
 echo [2/6] Extraindo Python para python\...
 if exist "%PYTHON_DIR%" rmdir /s /q "%PYTHON_DIR%"
-powershell -Command "Expand-Archive -Path '%PYTHON_ZIP%' -DestinationPath '%PYTHON_DIR%' -Force"
+"%PS%" -Command "Expand-Archive -Path '%PYTHON_ZIP%' -DestinationPath '%PYTHON_DIR%' -Force"
 if errorlevel 1 (
     echo  ERRO: Falha ao extrair o zip.
     pause & exit /b 1
@@ -42,12 +49,15 @@ if errorlevel 1 (
 
 :: ── [3/6] Habilitar site-packages ─────────────────────────────────
 echo [3/6] Habilitando site-packages no Python Embeddable...
-powershell -Command "(Get-Content '%PYTHON_DIR%\python311._pth') -replace '#import site', 'import site' | Set-Content '%PYTHON_DIR%\python311._pth'"
+"%PS%" -Command "(Get-Content '%PYTHON_DIR%\python311._pth') -replace '#import site', 'import site' | Set-Content '%PYTHON_DIR%\python311._pth'"
 
 :: ── [4/6] Instalar pip ────────────────────────────────────────────
 echo [4/6] Instalando pip...
 if not exist "get-pip.py" (
-    powershell -Command "Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile 'get-pip.py'"
+    curl.exe -sSL -o "get-pip.py" "https://bootstrap.pypa.io/get-pip.py"
+    if errorlevel 1 (
+        "%PS%" -Command "Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile 'get-pip.py'"
+    )
 )
 "%PYTHON_DIR%\python.exe" get-pip.py --no-warn-script-location -q
 if errorlevel 1 (
