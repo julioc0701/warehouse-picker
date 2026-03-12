@@ -63,6 +63,23 @@ function buildZplBlock(mlCode, description, sku) {
   )
 }
 
+// Etiqueta única (lado esquerdo preenchido, lado direito em branco)
+function buildZplBlockSingle(mlCode, description, sku) {
+  const safeDesc = (description || '')
+    .replace(/\^/g, ' ')
+    .replace(/~/g, ' ')
+    .substring(0, 120)
+  return (
+    '^XA^CI28\n' +
+    '^LH0,0\n' +
+    `^FO30,15^BY2,,0^BCN,54,N,N^FD${mlCode}^FS\n` +
+    `^FO105,75^A0N,20,25^FH^FD${mlCode}^FS\n` +
+    `^FO105,76^A0N,20,25^FH^FD${mlCode}^FS\n` +
+    `^FO16,115^A0N,18,18^FB300,2,2,L^FH^FD${safeDesc}^FS\n` +
+    `^FO16,172^A0N,18,18^FH^FDSKU: ${sku}^FS\n` +
+    '^XZ'
+  )
+}
 
 export default function Picking() {
   const { sessionId } = useParams()
@@ -381,14 +398,19 @@ export default function Picking() {
       const desc   = pickedItem.description
       const sku    = pickedItem.sku
 
-      // Bobina 2-up: cada bloco ZPL imprime 2 etiquetas físicas lado a lado.
-      // Quantidade de blocos = ceil(qty_picked / 2).
-      // Em qtd ímpar, a última etiqueta do lado direito sai em branco (aceitável).
-      // Exemplos: qty=3 → 2 blocos (3 reais + 1 branca) | qty=4 → 2 blocos (4 reais)
+      // Bobina 2-up: pares completos + single se ímpar.
+      // qty=1 → 1 single (esq preenchida, dir branca)
+      // qty=2 → 1 par    (ambas preenchidas)
+      // qty=3 → 1 par + 1 single
+      // qty=4 → 2 pares
       const qty       = pickedItem.qty_picked || 1
-      const numBlocks = Math.ceil(qty / 2)
-      const block     = buildZplBlock(mlCode, desc, sku)
-      const fullZpl   = Array.from({ length: numBlocks }, () => block).join('\n')
+      const fullPairs = Math.floor(qty / 2)
+      const remainder = qty % 2
+      const blocks = [
+        ...Array.from({ length: fullPairs }, () => buildZplBlock(mlCode, desc, sku)),
+        ...(remainder === 1 ? [buildZplBlockSingle(mlCode, desc, sku)] : []),
+      ]
+      const fullZpl = blocks.join('\n')
 
       await fetch(PRINT_AGENT_URL, {
         method: 'POST',
