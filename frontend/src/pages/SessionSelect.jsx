@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import SearchSelectionDialog from '../components/dialogs/SearchSelectionDialog'
 
 export default function SessionSelect() {
   const [sessions, setSessions] = useState([])
@@ -69,6 +70,11 @@ export default function SessionSelect() {
         return
       }
 
+      if (result.action === 'multiple_matches') {
+        setSearchResult({ action: 'multiple_matches', candidates: result.candidates })
+        return
+      }
+
       setSearchResult(result)
       // Auto-dismiss after 4 seconds
       dismissTimer.current = setTimeout(() => setSearchResult(null), 4000)
@@ -79,6 +85,13 @@ export default function SessionSelect() {
       setSearching(false)
       searchRef.current?.focus()
     }
+  }
+
+  function onSelectSearchResult(candidate) {
+    setSearchResult(null)
+    // Se for 'open' ou similar, o backend findByBarcode já nos diria a ação exata se bipado novamente.
+    // Mas aqui na busca geral, vamos direto pro picking do item selecionado.
+    navigate(`/picking/${candidate.session_id}?sku=${encodeURIComponent(candidate.sku)}`)
   }
 
   return (
@@ -158,6 +171,14 @@ export default function SessionSelect() {
               <p className="font-bold">✗ Erro ao consultar — tente novamente</p>
             )}
           </div>
+        )}
+
+        {searchResult?.action === 'multiple_matches' && (
+          <SearchSelectionDialog
+            candidates={searchResult.candidates}
+            onSelect={onSelectSearchResult}
+            onCancel={() => setSearchResult(null)}
+          />
         )}
       </div>
 
