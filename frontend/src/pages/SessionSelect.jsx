@@ -46,13 +46,8 @@ export default function SessionSelect() {
     s => s.operator_id === operator?.id && s.status === 'completed'
   )
 
-  // Reserva a sessão para este operador ao abrir
-  async function openSession(sessionId) {
-    try {
-      await api.claimSession(sessionId, operator.id)
-    } catch {
-      // Já reservada (primeiro scan já ocorreu) — tudo bem, só navegar
-    }
+  // Abre a sessão sem reservar imediatamente — a reserva ocorre no primeiro scan
+  function openSession(sessionId) {
     navigate(`/sessions/${sessionId}/items`)
   }
 

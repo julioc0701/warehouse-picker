@@ -99,9 +99,8 @@ async def upload_session(
         raise HTTPException(400, "Nenhum item encontrado no PDF. Verifique se é uma lista de picking do Mercado Livre.")
 
     # ── Replace all previous data ──────────────────────────────────────────
-    # CUIDADO: _clear_all_sessions() foi REMOVIDO para evitar perda de histórico.
-    # Novas sessões são agora apenas "acrescentadas" ao banco.
-    # _clear_all_sessions(db)
+    # CUIDADO: _clear_all_sessions() foi re-ativado a pedido do usuario.
+    _clear_all_sessions(db)
 
     # Split items into batches of max 1000 units, sorted by qty desc
     batches = split_into_batches(items_data, max_units=1000)
