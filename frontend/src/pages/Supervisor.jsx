@@ -18,6 +18,80 @@ function TrashIcon() {
 const STATUS_LABEL = { open: 'Disponível', in_progress: 'Em andamento', completed: 'Concluída' }
 const STATUS_COLOR = { open: 'text-gray-500', in_progress: 'text-blue-600', completed: 'text-green-600' }
 
+// ── Gráfico de Ranking ────────────────────────────────────────────────────────
+
+function OperatorRanking() {
+  const [data, setData] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.getOperatorRanking()
+      .then(res => {
+        if (Array.isArray(res)) setData(res)
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
+  if (loading) return (
+    <div className="bg-white rounded-2xl shadow p-6 mb-4 animate-pulse">
+      <div className="h-4 w-32 bg-gray-200 rounded mb-4"></div>
+      <div className="space-y-3">
+        <div className="h-3 bg-gray-100 rounded"></div>
+        <div className="h-3 bg-gray-100 rounded"></div>
+      </div>
+    </div>
+  )
+
+  const maxValue = data.length > 0 ? Math.max(...data.map(d => d.total || 0), 1) : 1
+
+  return (
+    <div className="bg-white rounded-2xl shadow p-6 mt-8">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+          🏆 Ranking de Produtividade (Tempo Real)
+        </h3>
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Itens Coletados</span>
+      </div>
+      
+      {data.length === 0 ? (
+        <div className="text-center py-8 text-gray-400 italic text-sm">
+          Ainda não há dados de produtividade registrados.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {data.slice(0, 5).map((op, idx) => (
+            <div key={op.name} className="relative group">
+              <div className="flex justify-between items-center mb-1 pr-2">
+                <span className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                  <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] text-white ${
+                    idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : idx === 2 ? 'bg-orange-400' : 'bg-blue-100 text-blue-600'
+                  }`}>
+                    {idx + 1}
+                  </span>
+                  {op.name}
+                </span>
+                <span className="text-xs font-mono font-bold text-blue-600">{(op.total || 0).toLocaleString()}</span>
+              </div>
+              <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden shadow-inner flex items-center">
+                <div 
+                  className="h-full rounded-full transition-all duration-1000 ease-out"
+                  style={{ 
+                    width: `${((op.total || 0) / maxValue) * 100}%`,
+                    background: `linear-gradient(90deg, ${
+                      idx === 0 ? '#fbbf24, #f59e0b' : idx === 1 ? '#9ca3af, #6b7280' : idx === 2 ? '#fb923c, #f97316' : '#60a5fa, #3b82f6'
+                    })`
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Supervisor() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState([])
@@ -114,7 +188,7 @@ export default function Supervisor() {
   const totalPct = totalItems ? Math.round((totalPicked / totalItems) * 100) : 0
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8 max-w-5xl mx-auto">
+    <div className="min-h-screen bg-gray-100 p-8 max-w-5xl mx-auto pb-20">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-4xl font-bold">Painel do Supervisor</h1>
         <a href="/" className="text-blue-500 hover:underline text-lg">← Login do Operador</a>
@@ -286,7 +360,8 @@ export default function Supervisor() {
           )}
         </div>
 
-
+        {/* Produtividade */}
+        <OperatorRanking />
 
       </div>
     </div>

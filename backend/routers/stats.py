@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import func
 from database import get_db
-from models import ScanEvent, Operator
+from models import Session, PickingItem, Operator
 
 router = APIRouter()
 
@@ -10,21 +10,21 @@ router = APIRouter()
 def get_operator_ranking(db: DBSession = Depends(get_db)):
     """
     Returns a ranking of operators by total quantity picked.
-    Calculated from scan_events where qty_delta > 0.
+    Calculated from PickingItem.qty_picked across all sessions assigned to an operator.
     """
     results = (
         db.query(
             Operator.name,
-            func.sum(ScanEvent.qty_delta).label("total_picked")
+            func.sum(PickingItem.qty_picked).label("total_picked")
         )
-        .join(ScanEvent, ScanEvent.operator_id == Operator.id)
-        .filter(ScanEvent.event_type.in_(["scan", "scan_box"]))
+        .join(Session, Session.operator_id == Operator.id)
+        .join(PickingItem, PickingItem.session_id == Session.id)
         .group_by(Operator.name)
-        .order_by(func.sum(ScanEvent.qty_delta).desc())
+        .order_by(func.sum(PickingItem.qty_picked).desc())
         .all()
     )
     
     return [
-        {"name": r.name, "total": int(r.total_picked)}
+        {"name": r.name, "total": int(r.total_picked or 0)}
         for r in results
     ]
