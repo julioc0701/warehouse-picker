@@ -63,9 +63,9 @@ export default function SessionSelect() {
     try {
       const result = await api.findByBarcode(code, operator.id)
 
-      if (result.action === 'open') {
+      if (result.action === 'open' || result.action === 'transfer_available') {
         const { session_id } = result.best_match
-        // Navega direto sem claim — a reserva ocorre no primeiro scan
+        // Navega direto sem claim — a reserva ocorre no primeiro scan (ou no diálogo de transferência que o Picking.jsx abrirá)
         navigate(`/picking/${session_id}?sku=${encodeURIComponent(result.sku)}`)
         return
       }
@@ -124,7 +124,7 @@ export default function SessionSelect() {
           <div className={`mt-3 rounded-2xl px-5 py-4 text-base font-medium ${
             searchResult.action === 'already_done'
               ? 'bg-orange-50 border-2 border-orange-300 text-orange-800'
-              : searchResult.action === 'in_progress_other'
+              : (searchResult.action === 'in_progress_other' || searchResult.action === 'transfer_available')
               ? 'bg-yellow-50 border-2 border-yellow-300 text-yellow-800'
               : 'bg-red-50 border-2 border-red-300 text-red-800'
           }`}>
@@ -143,13 +143,16 @@ export default function SessionSelect() {
               )
             })()}
 
-            {searchResult.action === 'in_progress_other' && (() => {
+            {(searchResult.action === 'in_progress_other' || searchResult.action === 'transfer_available') && (() => {
               const m = searchResult.best_match
+              const isTransfer = searchResult.action === 'transfer_available'
               return (
                 <>
-                  <p className="font-bold text-lg">🔒 Item em separação por outro operador</p>
+                  <p className="font-bold text-lg">
+                    {isTransfer ? '⇄ Item disponível para transferência' : '🔒 Item em separação por outro operador'}
+                  </p>
                   <p className="mt-1">
-                    <strong>{searchResult.sku}</strong> está sendo separado por{' '}
+                    <strong>{searchResult.sku}</strong> {isTransfer ? 'pode ser trazido para você da lista de' : 'está sendo separado por'}{' '}
                     <strong>{m.operator_name}</strong> na lista <strong>{m.session_code}</strong>
                   </p>
                 </>
