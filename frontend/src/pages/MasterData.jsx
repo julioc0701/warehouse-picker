@@ -311,7 +311,10 @@ function OperatorRanking() {
   const maxValue = data.length > 0 ? Math.max(...data.map(d => d.total || 0), 1) : 1
 
   return (
-    <div className="bg-white rounded-2xl shadow p-6 mb-4">
+    <div className="bg-white rounded-2xl shadow p-6 mb-4 border-2 border-dashed border-blue-200 relative">
+      <div className="absolute -top-3 -right-3 bg-blue-600 text-white text-[10px] px-2 py-1 rounded-full font-bold shadow-lg">
+        V-RANK-2.2
+      </div>
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
           🏆 Ranking de Produtividade
@@ -458,6 +461,9 @@ export default function MasterData() {
       <div className="bg-white shadow px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Master Data — Produtos Cadastrados</h1>
+          <div className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-md inline-block font-bold animate-bounce mb-1">
+            DEBUG: v2.3 - RANKING LIVE
+          </div>
           <p className="text-gray-500 text-sm mt-0.5">
             {loading ? 'Carregando...' : `${total} produtos cadastrados no total`}
           </p>
