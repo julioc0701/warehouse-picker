@@ -101,7 +101,7 @@ export default function SessionSelect() {
           value={searchBarcode}
           onChange={e => setSearchBarcode(e.target.value)}
           onKeyDown={handleBarcodeSearch}
-          placeholder="Bipar código de barras para localizar item..."
+          placeholder="Buscar por código de barras, SKU ou descrição..."
           className="w-full border-2 border-gray-300 focus:border-blue-500 rounded-2xl px-5 py-4 text-xl outline-none transition-colors"
           disabled={searching}
         />

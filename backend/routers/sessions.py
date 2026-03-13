@@ -229,14 +229,35 @@ def find_by_barcode(
       not_found        — barcode not in the Barcode table
       not_in_sessions  — SKU exists but not in any active session
     """
-    # 1. Resolve barcode → SKU
+    # 1. Try exact barcode match first
     bc = db.query(Barcode).filter(Barcode.barcode == barcode).first()
-    if not bc:
-        return {"action": "not_found", "barcode": barcode}
+    sku = bc.sku if bc else None
 
-    sku = bc.sku
+    # 2. If no barcode match, try SKU or Description (partial match)
+    if not sku:
+        like_query = f"%{barcode}%"
+        # Search in PickingItem directly to find active instances
+        # and prioritize exact SKU match over description match
+        from sqlalchemy import case
+        best_item = (
+            db.query(PickingItem)
+            .join(Session, Session.id == PickingItem.session_id)
+            .filter(
+                Session.status != "completed",
+                (PickingItem.sku == barcode) | (PickingItem.sku.ilike(like_query)) | (PickingItem.description.ilike(like_query))
+            )
+            .order_by(
+                case((PickingItem.sku == barcode, 1), else_=0).desc(),  # Exact SKU first
+                PickingItem.qty_required.desc()                         # Then by volume
+            )
+            .first()
+        )
+        if best_item:
+            sku = best_item.sku
+        else:
+            return {"action": "not_found", "barcode": barcode}
 
-    # 2. Find all items with this SKU in non-completed sessions, best first
+    # 3. Find all items with this SKU in non-completed sessions, best first
     rows = (
         db.query(PickingItem, Session, Operator)
         .join(Session, Session.id == PickingItem.session_id)
