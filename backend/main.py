@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from database import init_db, get_db
-from routers import sessions, operators, labels, printers, seed, barcodes, print_jobs
+from routers import sessions, operators, labels, printers, seed, barcodes, print_jobs, stats
 from models import Operator
 
 app = FastAPI(title="NVS API", version="1.0.0")
@@ -23,6 +23,7 @@ app.include_router(printers.router, prefix="/api/printers", tags=["printers"])
 app.include_router(seed.router, prefix="/api/test", tags=["seed"])
 app.include_router(barcodes.router, prefix="/api/barcodes", tags=["barcodes"])
 app.include_router(print_jobs.router, prefix="/api/print-jobs", tags=["print-jobs"])
+app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
 
 DEFAULT_OPERATORS = ["Master", "Julio", "Cris", "Rafael", "Luidi", "Weligton", "Cristofer", "Renan"]
 

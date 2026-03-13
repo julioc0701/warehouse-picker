@@ -94,4 +94,7 @@ export const api = {
     req('POST', `/barcodes/${encodeURIComponent(sku)}/barcode`, { barcode }),
   removeBarcodeFromProduct: (sku, barcode) =>
     req('DELETE', `/barcodes/${encodeURIComponent(sku)}/barcode/${encodeURIComponent(barcode)}`),
+
+  // Stats
+  getOperatorRanking: () => req('GET', '/stats/ranking'),
 }
