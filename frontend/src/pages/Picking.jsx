@@ -522,11 +522,13 @@ export default function Picking() {
               )}
             </div>
 
-            <p className="text-center text-gray-400 text-lg mb-3 uppercase tracking-wide">Escaneie o código de barras</p>
+            <p className="text-center text-gray-400 text-lg mb-3 uppercase tracking-wide">
+              Escaneie o código de barras ou digite o SKU
+            </p>
             <input
               ref={inputRef}
               className="scan-input"
-              placeholder="▐ _ ▌"
+              placeholder="Digite o SKU ou bipe aqui..."
               value={barcode}
               onChange={e => setBarcode(e.target.value)}
               onKeyDown={handleScan}

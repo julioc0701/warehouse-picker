@@ -13,7 +13,7 @@ export default function UnknownBarcodeDialog({ barcode, currentSku, onAdd, onSki
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-3xl p-10 w-full max-w-md shadow-2xl">
-        <h2 className="text-4xl font-bold text-yellow-600 mb-4">❓ CÓDIGO DESCONHECIDO</h2>
+        <h2 className="text-4xl font-bold text-yellow-600 mb-4">❓ CÓDIGO OU SKU DESCONHECIDO</h2>
         <p className="text-xl mb-2">Código: <code className="bg-gray-100 px-2 py-1 rounded font-mono">{barcode}</code></p>
         <p className="text-xl mb-8">SKU atual: <strong>{currentSku}</strong></p>
 

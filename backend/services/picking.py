@@ -35,9 +35,11 @@ def process_scan(
     Possible statuses: ok | complete | excess | unknown_barcode | wrong_sku
     """
     sku = resolve_barcode(db, barcode)
-
-    if sku is None:
-        return {"status": "unknown_barcode", "barcode": barcode}
+    is_barcode = sku is not None
+    
+    # Se não encontrar via barcode, tenta tratar o input diretamente como o SKU (fallback manual)
+    if not is_barcode:
+        sku = barcode
 
     # Find the item for this SKU in the session
     item = (
@@ -45,7 +47,12 @@ def process_scan(
         .filter(PickingItem.session_id == session_id, PickingItem.sku == sku)
         .first()
     )
+    
     if item is None:
+        # Se não é um barcode conhecido E não é um SKU desta sessão, é desconhecido
+        if not is_barcode:
+            return {"status": "unknown_barcode", "barcode": barcode}
+            
         # Barcode é conhecido mas pertence a um SKU que não está nesta sessão
         bc = db.query(Barcode).filter(Barcode.barcode == barcode).first()
         description = (bc.description if bc else None) or (
@@ -129,8 +136,10 @@ def process_scan_box(
     Same barcode validation as process_scan (unknown_barcode / wrong_sku / excess).
     """
     sku = resolve_barcode(db, barcode)
-    if sku is None:
-        return {"status": "unknown_barcode", "barcode": barcode}
+    is_barcode = sku is not None
+
+    if not is_barcode:
+        sku = barcode
 
     item = (
         db.query(PickingItem)
@@ -138,6 +147,9 @@ def process_scan_box(
         .first()
     )
     if item is None:
+        if not is_barcode:
+            return {"status": "unknown_barcode", "barcode": barcode}
+
         # Barcode é conhecido mas pertence a um SKU que não está nesta sessão
         bc = db.query(Barcode).filter(Barcode.barcode == barcode).first()
         description = (bc.description if bc else None) or (
