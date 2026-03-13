@@ -55,7 +55,7 @@ class Barcode(Base):
     __tablename__ = "barcodes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    barcode: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    barcode: Mapped[str] = mapped_column(String(200), nullable=False)
     sku: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=True)

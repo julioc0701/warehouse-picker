@@ -246,6 +246,10 @@ export default function Picking() {
         }
         return
 
+      case 'ambiguous_barcode':
+        setDialog({ type: 'multiple_matches', data: { candidates: res.candidates } })
+        return
+
       case 'wrong_sku':
         // Em focus mode, o operador está trabalhando num SKU específico.
         // Bipar um código de outro SKU não deve oferecer substituição — só informa o erro.
@@ -473,20 +477,20 @@ export default function Picking() {
 
   async function onSelectSearchResult(candidate) {
     setDialog(null)
-    // Se o item é da própria lista, apenas foca ou seleciona
-    if (candidate.session_id === parseInt(sessionId)) {
-      if (focusSku === candidate.sku) {
-          // Já está nele
+    const isInSession = allItems.some(i => i.sku === candidate.sku)
+
+    if (isInSession) {
+      if (focusSku) {
+        // Se já estamos focados, apenas bipa
+        await handleScan({ key: 'Enter', target: { value: candidate.sku } }, candidate.sku)
       } else {
-          navigate(`/picking/${sessionId}?sku=${encodeURIComponent(candidate.sku)}`)
+        // No modo livre, manda o scan com o focus_sku para o backend resolver a ambiguidade
+        const code = barcode || candidate.sku // Fallback pro SKU se o input estiver vazio
+        await handleScan({ key: 'Enter', target: { value: code } }, candidate.sku)
       }
     } else {
-        // Se for de outra lista, bipa o SKU dele especificamente pra disparar o fluxo de transferência
-        setBarcode(candidate.sku)
-        // Precisamos esperar o estado atualizar ou chamar handleScan manualmente
-        // Vou forçar o handleScan com o SKU selecionado
-        const res = await api.findByBarcode(candidate.sku, operator.id)
-        updateFromResponse(res, candidate.sku)
+      // Mesma lógica de transferência existente
+      handleScan({ key: 'Enter', target: { value: candidate.sku } })
     }
   }
 

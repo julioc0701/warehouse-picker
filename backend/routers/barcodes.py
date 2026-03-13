@@ -88,12 +88,15 @@ async def import_excel(
             existing.add(sku)
 
         for ean in ean_list:
-            if ean in existing:
+            # Check if this EXACT ean-sku pair already exists to avoid redundant rows
+            pair_exists = db.query(Barcode).filter(Barcode.barcode == ean, Barcode.sku == sku).first()
+            if pair_exists:
                 skipped += 1
                 continue
+            
             ean_is_real = ean != sku
             db.add(Barcode(barcode=ean, sku=sku, is_primary=ean_is_real))
-            existing.add(ean)
+            # No longer skipping if EAN belongs to another SKU
             if ean_is_real:
                 added += 1
             else:
@@ -121,10 +124,7 @@ def create_product(body: CreateProductBody, db: DBSession = Depends(get_db)):
         b = raw.strip()
         if not b or b == sku:
             continue
-        conflict = db.query(Barcode).filter(Barcode.barcode == b).first()
-        if conflict:
-            db.rollback()
-            raise HTTPException(409, f"Código '{b}' já pertence ao SKU '{conflict.sku}'")
+        # No longer checking if barcode already belongs to another SKU
         db.add(Barcode(barcode=b, sku=sku, is_primary=True))
 
     db.commit()
@@ -165,11 +165,8 @@ def add_barcode_to_sku(sku: str, body: AddBarcodeBody, db: DBSession = Depends(g
     barcode = body.barcode.strip()
     if not barcode:
         raise HTTPException(400, "Código de barras obrigatório")
-    conflict = db.query(Barcode).filter(Barcode.barcode == barcode).first()
-    if conflict:
-        if conflict.sku == sku:
-            raise HTTPException(409, f"Código '{barcode}' já está vinculado a este SKU")
-        raise HTTPException(409, f"Código '{barcode}' já pertence ao SKU '{conflict.sku}'")
+        # No longer checking if barcode already belongs to another SKU
+        pass
     db.add(Barcode(barcode=barcode, sku=sku, is_primary=True))
     db.commit()
     return {"status": "ok"}

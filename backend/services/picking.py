@@ -17,10 +17,10 @@ def get_current_item(db: DBSession, session_id: int) -> PickingItem | None:
     )
 
 
-def resolve_barcode(db: DBSession, barcode: str) -> str | None:
-    """Return SKU for a barcode, or None if unknown."""
-    entry = db.query(Barcode).filter(Barcode.barcode == barcode).first()
-    return entry.sku if entry else None
+def resolve_barcode(db: DBSession, barcode: str) -> list[str]:
+    """Return all SKUs for a barcode."""
+    entries = db.query(Barcode).filter(Barcode.barcode == barcode).all()
+    return list(set(e.sku for e in entries))
 
 
 def process_scan(
@@ -32,42 +32,67 @@ def process_scan(
 ) -> dict:
     """
     Main scan handler. Returns a result dict with status and updated item state.
-    Possible statuses: ok | complete | excess | unknown_barcode | wrong_sku
+    Possible statuses: ok | complete | excess | unknown_barcode | wrong_sku | ambiguous_barcode
     """
-    sku = resolve_barcode(db, barcode)
-    is_barcode = sku is not None
+    skus = resolve_barcode(db, barcode)
     
     # Se não encontrar via barcode, tenta tratar o input diretamente como o SKU (fallback manual)
-    if not is_barcode:
+    if not skus:
         sku = barcode
+        skus = [sku]
+        is_barcode = False
+    else:
+        is_barcode = True
 
-    # Find the item for this SKU in the session
-    item = (
+    # Find which of these SKUs are in the current session
+    items = (
         db.query(PickingItem)
-        .filter(PickingItem.session_id == session_id, PickingItem.sku == sku)
-        .first()
+        .filter(PickingItem.session_id == session_id, PickingItem.sku.in_(skus))
+        .all()
     )
     
-    if item is None:
+    if not items:
         # Se não é um barcode conhecido E não é um SKU desta sessão, é desconhecido
         if not is_barcode:
             return {"status": "unknown_barcode", "barcode": barcode}
             
-        # Barcode é conhecido mas pertence a um SKU que não está nesta sessão
-        bc = db.query(Barcode).filter(Barcode.barcode == barcode).first()
+        # Barcode é conhecido mas pertence a SKU(s) que não estão nesta sessão
+        # Pegamos o primeiro SKU para prover uma descrição de erro (legado)
+        target_sku = skus[0]
+        bc = db.query(Barcode).filter(Barcode.barcode == barcode, Barcode.sku == target_sku).first()
         description = (bc.description if bc else None) or (
             db.query(PickingItem.description)
-            .filter(PickingItem.sku == sku, PickingItem.description.isnot(None))
+            .filter(PickingItem.sku == target_sku, PickingItem.description.isnot(None))
             .scalar()
         )
-        return {"status": "wrong_session", "barcode": barcode, "sku": sku, "description": description}
+        return {"status": "wrong_session", "barcode": barcode, "sku": target_sku, "description": description}
 
+    # SELECTION LOGIC for multiple SKUs for the same barcode
+    if len(items) > 1 and not focus_sku:
+        # If we have multiple SKUs in this session for the same barcode, and no focus_sku was provided,
+        # we must ask the operator to choose.
+        return {
+            "status": "ambiguous_barcode",
+            "barcode": barcode,
+            "candidates": [_item_dict(i) for i in items]
+        }
+
+    # If we have a focus_sku, or only one match, we pick that one
+    if focus_sku:
+        item = next((i for i in items if i.sku == focus_sku), None)
+        if not item:
+             # This shouldn't happen if frontend is correct
+             return {"status": "error", "message": f"SKU focado {focus_sku} não encontrado para este código"}
+    else:
+        item = items[0]
+
+    sku = item.sku
     current = get_current_item(db, session_id)
 
     # Scanned a different SKU than what's expected.
     # Skip this check in focus mode: if the operator explicitly chose to scan
     # this SKU (focus_sku), allow it even if it's not the first pending item.
-    in_focus_mode = focus_sku is not None and focus_sku == sku
+    in_focus_mode = (focus_sku is not None and focus_sku == sku)
     if current and current.sku != sku and not in_focus_mode:
         return {
             "status": "wrong_sku",
@@ -135,30 +160,39 @@ def process_scan_box(
     Box mode scan: one scan marks the entire required quantity as picked.
     Same barcode validation as process_scan (unknown_barcode / wrong_sku / excess).
     """
-    sku = resolve_barcode(db, barcode)
-    is_barcode = sku is not None
-
-    if not is_barcode:
+    skus = resolve_barcode(db, barcode)
+    if not skus:
         sku = barcode
+        skus = [sku]
+        is_barcode = False
+    else:
+        is_barcode = True
 
-    item = (
+    items = (
         db.query(PickingItem)
-        .filter(PickingItem.session_id == session_id, PickingItem.sku == sku)
-        .first()
+        .filter(PickingItem.session_id == session_id, PickingItem.sku.in_(skus))
+        .all()
     )
-    if item is None:
+    
+    if not items:
         if not is_barcode:
             return {"status": "unknown_barcode", "barcode": barcode}
 
-        # Barcode é conhecido mas pertence a um SKU que não está nesta sessão
-        bc = db.query(Barcode).filter(Barcode.barcode == barcode).first()
-        description = (bc.description if bc else None) or (
-            db.query(PickingItem.description)
-            .filter(PickingItem.sku == sku, PickingItem.description.isnot(None))
-            .scalar()
-        )
-        return {"status": "wrong_session", "barcode": barcode, "sku": sku, "description": description}
+    if len(items) > 1 and not focus_sku:
+        return {
+            "status": "ambiguous_barcode",
+            "barcode": barcode,
+            "candidates": [_item_dict(i) for i in items]
+        }
 
+    if focus_sku:
+        item = next((i for i in items if i.sku == focus_sku), None)
+        if not item:
+             return {"status": "error", "message": f"SKU focado {focus_sku} não encontrado para este código"}
+    else:
+        item = items[0]
+
+    sku = item.sku
     current = get_current_item(db, session_id)
     in_focus_mode = focus_sku is not None and focus_sku == sku
     if current and current.sku != sku and not in_focus_mode:
