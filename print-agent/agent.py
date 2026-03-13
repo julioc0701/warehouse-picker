@@ -43,7 +43,7 @@ AGENT_VERSION   = "1.4" # Atualizado para 1.4 por segurança CORS
 AGENT_PORT      = int(os.getenv("PRINT_AGENT_PORT", "9100"))
 PRINTER_NAME    = os.getenv("PRINTER_NAME", "")   # vazio = auto-deteccao
 ENABLE_POLLING  = os.getenv("ENABLE_POLLING", "0").strip() == "1"
-BACKEND_URL     = os.getenv("BACKEND_URL", "http://localhost:8001/api")
+BACKEND_URL     = os.getenv("BACKEND_URL", "http://localhost:8001/api").strip()
 POLL_INTERVAL   = int(os.getenv("POLL_INTERVAL", "5"))
 
 # Allowed Origins para o FrontEnd Web — Proteção contra comandos indesejados no navegador
@@ -431,7 +431,8 @@ def _backend_request(method: str, path: str, body: dict | None = None):
     data = json.dumps(body).encode("utf-8") if body else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req, timeout=8) as resp:
+    req.add_header("User-Agent", f"NVS-Print-Agent/{AGENT_VERSION}")
+    with urllib.request.urlopen(req, timeout=10) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -444,6 +445,7 @@ def _polling_loop() -> None:
     print(f"  [POLL] Loop ativo — backend: {BACKEND_URL} / intervalo: {POLL_INTERVAL}s")
     failures = 0
     MAX_FAILURES = 5
+    idle_count = 0
 
     while True:
         try:
@@ -451,7 +453,13 @@ def _polling_loop() -> None:
             failures = 0  # reset ao conseguir comunicar
 
             if jobs:
-                print(f"  [POLL] {len(jobs)} job(s) pendente(s)")
+                print(f"  [POLL] {len(jobs)} job(s) pendente(s) encontrado(s)!")
+                idle_count = 0
+            else:
+                idle_count += 1
+                if idle_count >= (60 // POLL_INTERVAL):
+                    print(f"  [POLL] Verificando... (sem novos jobs na fila)")
+                    idle_count = 0
 
             for job in jobs:
                 job_id = job["id"]
@@ -462,11 +470,12 @@ def _polling_loop() -> None:
                     _backend_request("PATCH", f"/print-jobs/{job_id}", {"status": "ERROR", "error_msg": "ZPL vazio"})
                     continue
 
-                # Tenta reservar o job (evita concorrencia entre agentes)
+                # Tenta reservar o job
                 try:
                     _backend_request("PATCH", f"/print-jobs/{job_id}", {"status": "PRINTING"})
-                except Exception:
-                    continue  # outro agente ja pegou
+                except Exception as e:
+                    print(f"  [POLL] Nao foi possivel reservar job {job_id}: {e}")
+                    continue
 
                 print(f"  [POLL] Imprimindo job {job_id} — SKU: {sku}")
                 result = do_print(zpl)
@@ -478,20 +487,19 @@ def _polling_loop() -> None:
                 )
                 try:
                     _backend_request("PATCH", f"/print-jobs/{job_id}", fin_body)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"  [POLL] Nao foi possivel atualizar status do job {job_id}: {e}")
 
                 if result["status"] == "ok":
-                    print(f"  [POLL] Job {job_id} impresso em '{result.get('printer')}'")
+                    print(f"  [POLL] Job {job_id} impresso com sucesso!")
                 else:
-                    print(f"  [POLL] Job {job_id} ERRO: {result.get('message')}")
+                    print(f"  [POLL] Job {job_id} FALHOU: {result.get('message')}")
 
         except Exception as e:
             failures += 1
-            if failures <= MAX_FAILURES:
-                print(f"  [POLL] Backend indisponivel ({failures}/{MAX_FAILURES}): {e}")
-            if failures == MAX_FAILURES:
-                print(f"  [POLL] Backend nao acessivel. Verificando a cada 60s...")
+            print(f"  [POLL] Falha na comunicacao ({failures}/{MAX_FAILURES}): {e}")
+            if failures >= MAX_FAILURES:
+                print(f"  [POLL] Backend nao acessivel. Tentando novamente em 60s...")
 
         interval = 60 if failures >= MAX_FAILURES else POLL_INTERVAL
         time.sleep(interval)

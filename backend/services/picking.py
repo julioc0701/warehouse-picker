@@ -226,6 +226,8 @@ def mark_shortage(db: DBSession, session_id: int, sku: str, qty_found: int, oper
 
     log_event(db, session_id, item.id, "SHORTAGE", operator_id, "shortage", qty_found)
     _auto_complete_session(db, session_id)
+    if item.qty_picked > 0:
+        _create_print_job(db, session_id, item.sku, operator_id)
     db.commit()
     return {"status": "ok", "item": _item_dict(item)}
 
@@ -242,6 +244,8 @@ def mark_out_of_stock(db: DBSession, session_id: int, sku: str, operator_id: int
 
     log_event(db, session_id, item.id, "OOS", operator_id, "out_of_stock", 0)
     _auto_complete_session(db, session_id)
+    if item.qty_picked > 0:
+        _create_print_job(db, session_id, item.sku, operator_id)
     db.commit()
     return {"status": "ok", "item": _item_dict(item)}
 
