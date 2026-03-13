@@ -368,7 +368,6 @@ export default function Picking() {
    * - Proteção contra dupla impressão via item.labels_printed.
    */
   async function autoPrintLabels(pickedItem, force = false) {
-    // Proteção contra dupla impressão — ignorada se force=true (botão Reimprimir)
     if (!force && pickedItem.labels_printed) {
       setPrintStatus('done')
       return
@@ -377,53 +376,52 @@ export default function Picking() {
     setPrintStatus('printing')
     setPrintError(null)
 
+    const mlCode = pickedItem.ml_code || pickedItem.sku
+    const desc = pickedItem.description
+    const sku = pickedItem.sku
+    const qty = pickedItem.qty_picked || 1
+    const fullPairs = Math.floor(qty / 2)
+    const remainder = qty % 2
+
+    const blocks = [
+      ...Array.from({ length: fullPairs }, () => buildZplBlock(mlCode, desc, sku)),
+      ...(remainder === 1 ? [buildZplBlockSingle(mlCode, desc, sku)] : []),
+    ]
+    const fullZpl = blocks.join('\n')
+
     try {
-      // Valida que o agente correto está ativo antes de tentar imprimir
+      // 1. Tenta impressão DIRETA (Agente Local HTTP na porta 9100)
+      // Nota: Em PRD (HTTPS), isso costuma ser bloqueado por Mixed Content.
       try {
-        const healthRes = await fetch(`${PRINT_AGENT_BASE}/health`, {
-          signal: AbortSignal.timeout(3000),
+        console.log('Tentando impressão direta via 127.0.0.1:9100...')
+        await fetch(PRINT_AGENT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: fullZpl,
+          mode: 'no-cors',
+          signal: AbortSignal.timeout(2000), // Timeout curto para falhar rápido
         })
-        const health = await healthRes.json()
-        if (health.service !== 'zebra-print-agent' || health.status !== 'ok') {
-          throw new Error('agente incorreto')
-        }
-      } catch {
-        setPrintError('ZebraAgent-WP.exe não está aberto. Abra o programa e clique em "Tentar novamente".')
-        setPrintStatus('error')
+        console.log('Comando direto enviado (no-cors).')
+        
+        // Se conseguimos enviar (mesmo sem ler a resposta), marcamos como impresso
+        await api.markPrinted(sessionId, pickedItem.sku)
+        setPrintStatus('done')
         return
+      } catch (directErr) {
+        console.warn('Impressão direta falhou ou foi bloqueada. Tentando fila do servidor...', directErr)
       }
 
-      const mlCode = pickedItem.ml_code || pickedItem.sku
-      const desc = pickedItem.description
-      const sku = pickedItem.sku
-
-      const qty       = pickedItem.qty_picked || 1
-      const fullPairs = Math.floor(qty / 2)
-      const remainder = qty % 2
-
-      const blocks = [
-        ...Array.from({ length: fullPairs }, () => buildZplBlock(mlCode, desc, sku)),
-        ...(remainder === 1 ? [buildZplBlockSingle(mlCode, desc, sku)] : []),
-      ]
-      const fullZpl = blocks.join('\n')
-
-      await fetch(PRINT_AGENT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: fullZpl,
-        mode: 'no-cors',
-        signal: AbortSignal.timeout(30000),
-      })
-
-      // Marca como impresso no backend
-      await api.markPrinted(sessionId, pickedItem.sku)
+      // 2. FALLBACK: Fila de Impressão (Polling)
+      // Envia o job para o backend. O Agente (iniciar_producao.bat) vai "puxar" e imprimir.
+      console.log('Enviando job para fila de impressão do servidor...')
+      await api.createPrintJob(sessionId, pickedItem.sku, fullZpl, operator?.id)
+      
+      // O backend volta um job PENDING. O Agente local vai pegar em até 5 segundos.
       setPrintStatus('done')
 
     } catch (err) {
-      const isConnectionError = err instanceof TypeError || err.name === 'AbortError'
-      const msg = isConnectionError
-        ? 'ZebraAgent-WP.exe não está aberto. Abra o programa e clique em "Tentar novamente".'
-        : (err?.message || 'Erro desconhecido na impressão')
+      console.error('Erro em ambos os métodos de impressão:', err)
+      const msg = err?.message || 'Erro inesperado na impressão'
       setPrintError(msg)
       setPrintStatus('error')
     }
