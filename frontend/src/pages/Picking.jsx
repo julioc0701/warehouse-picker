@@ -158,25 +158,22 @@ export default function Picking() {
     setTimeout(() => setFlash(null), 600)
   }
 
-  async function handleScan(e) {
-    if (e.key !== 'Enter' || !barcode.trim()) return
-    const code = barcode.trim()
-    setBarcode('')
+  async function handleScan(e, codeOverride = null) {
+    if (e && e.key !== 'Enter') return
+    const code = (codeOverride || barcode || '').trim()
+    if (!code) return
+    
+    // Se não for override (bipagem real), limpa o campo
+    if (!codeOverride) setBarcode('')
 
     try {
       if (scanMode === 'box' && item) {
-        // Valida o barcode antes de abrir o dialog de quantidade
         const res = await api.scan(sessionId, code, operator.id, focusSku || null)
-
         if (res.status === 'ok') {
-          // Barcode válido — desfaz o +1 e abre dialog de quantidade
           await api.undo(sessionId, item.sku, operator.id)
           setDialog({ type: 'box_qty', data: { code } })
           return
         }
-
-        // complete com qty=1 já terminou; wrong_session / wrong_sku / unknown
-        // — tratados igual ao modo unitário
         updateFromResponse(res, code)
         return
       }
@@ -482,15 +479,16 @@ export default function Picking() {
     if (isInSession) {
       if (focusSku) {
         // Se já estamos focados, apenas bipa
-        await handleScan({ key: 'Enter', target: { value: candidate.sku } }, candidate.sku)
+        await handleScan(null, candidate.sku)
       } else {
         // No modo livre, manda o scan com o focus_sku para o backend resolver a ambiguidade
-        const code = barcode || candidate.sku // Fallback pro SKU se o input estiver vazio
-        await handleScan({ key: 'Enter', target: { value: code } }, candidate.sku)
+        // Passamos o SKU selecionado como override
+        await handleScan(null, candidate.sku)
       }
     } else {
-      // Mesma lógica de transferência existente
-      handleScan({ key: 'Enter', target: { value: candidate.sku } })
+      // Mesma lógica de transferência existente: bipa o SKU override
+      // O backend process_scan agora retornará 'wrong_session' + 'transfer_available'
+      handleScan(null, candidate.sku)
     }
   }
 
