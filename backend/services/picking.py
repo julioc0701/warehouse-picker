@@ -410,7 +410,7 @@ def reset_all_items(db: DBSession, session_id: int, operator_id: int) -> dict:
 
 
 def add_barcode(db: DBSession, barcode: str, sku: str, operator_id: int) -> dict:
-    existing = db.query(Barcode).filter(Barcode.barcode == barcode).first()
+    existing = db.query(Barcode).filter(Barcode.barcode == barcode, Barcode.sku == sku).first()
     if existing:
         return {"status": "already_exists", "sku": existing.sku}
     entry = Barcode(barcode=barcode, sku=sku, is_primary=False, added_by=operator_id)

@@ -321,8 +321,7 @@ export default function Picking() {
     if (item) {
       await api.addBarcode(sessionId, code, item.sku, operator.id)
       if (scanMode === 'box') {
-        // Barcode acabou de ser vinculado — desfaz o +1 do scan original e abre dialog de quantidade
-        await api.undo(sessionId, item.sku, operator.id)
+        // Barcode acabou de ser vinculado — abre dialog de quantidade
         setDialog({ type: 'box_qty', data: { code } })
         return
       }
@@ -818,12 +817,20 @@ export default function Picking() {
               )}
               <p className="text-gray-400 text-xs mt-3">Este código não pertence ao item desta lista.</p>
             </div>
-            <button
-              onClick={() => { setDialog(null); focusInput() }}
-              className="py-4 rounded-xl bg-gray-100 border-2 border-gray-300 text-lg font-medium hover:bg-gray-200"
-            >
-              OK
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => { setDialog(null); focusInput() }}
+                className="py-4 rounded-xl bg-gray-100 border-2 border-gray-300 text-lg font-medium hover:bg-gray-200"
+              >
+                CANCELAR
+              </button>
+              <button
+                onClick={() => handleAddBarcode(dialog.data.barcode)}
+                className="py-4 rounded-xl bg-blue-600 text-white text-lg font-bold hover:bg-blue-700"
+              >
+                VINCULAR
+              </button>
+            </div>
           </div>
         </div>
       )}
