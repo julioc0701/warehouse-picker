@@ -1,7 +1,7 @@
 """Core picking business logic."""
 from datetime import datetime
 from sqlalchemy.orm import Session as DBSession
-from models import PickingItem, Barcode, ScanEvent, Session, Label, PrintJob
+from models import PickingItem, Barcode, ScanEvent, Session, Label, PrintJob, Operator
 
 
 def get_current_item(db: DBSession, session_id: int) -> PickingItem | None:
