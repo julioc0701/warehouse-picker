@@ -120,7 +120,7 @@ export default function SessionSelect() {
         />
 
         {/* Result card */}
-        {searchResult && (
+        {searchResult && searchResult.action !== 'multiple_matches' && (
           <div className={`mt-3 rounded-2xl px-5 py-4 text-base font-medium ${
             searchResult.action === 'already_done'
               ? 'bg-orange-50 border-2 border-orange-300 text-orange-800'
