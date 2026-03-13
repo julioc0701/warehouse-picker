@@ -239,7 +239,8 @@ export default function Picking() {
         } else if (res.action === 'in_progress_other') {
           setDialog({ type: 'wrong_sku', data: { ...res, barcode: code } })
         } else {
-          setWrongItem({ sku: res.sku, description: res.description })
+          // Fallback quando o barcode é conhecido mas não é transferível
+          setDialog({ type: 'wrong_session', data: { barcode: code, sku: res.sku, description: res.description } })
         }
         return
 
@@ -840,13 +841,22 @@ export default function Picking() {
           scannedItem={dialog.data.item}
           expectedSku={dialog.data.expected_sku}
           onConfirm={async () => {
+            const code = dialog.data.barcode
+            const sku = dialog.data.scanned_sku
             setDialog(null)
+            
             if (scanMode === 'box') {
-              // Modo caixa: completa o item bipado diretamente (sem precisar bipar de novo)
-              const res = await api.scanBox(sessionId, dialog.data.barcode, operator.id, dialog.data.scanned_sku)
-              updateFromResponse(res, dialog.data.barcode)
+              // Modo caixa: em vez de completar direto, bipa para focar o item e abre o dialog de qtde
+              const res = await api.scan(sessionId, code, operator.id, sku)
+              if (res.status === 'ok' || res.status === 'complete') {
+                await api.undo(sessionId, sku, operator.id)
+                setItem(res.item)
+                setDialog({ type: 'box_qty', data: { code } })
+              } else {
+                updateFromResponse(res, code)
+              }
             } else {
-              const res = await api.reopen(sessionId, dialog.data.scanned_sku, operator.id)
+              const res = await api.reopen(sessionId, sku, operator.id)
               setItem(res.item)
               focusInput()
             }
