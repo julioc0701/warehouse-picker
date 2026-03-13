@@ -59,6 +59,28 @@ def process_scan(
         # Barcode é conhecido mas pertence a SKU(s) que não estão nesta sessão
         # Pegamos o primeiro SKU para prover uma descrição de erro (legado)
         target_sku = skus[0]
+        
+        # --- NOVO: Tenta localizar esse SKU em outras sessões para sugerir transferência ---
+        other_rows = (
+            db.query(PickingItem, Session, Operator)
+            .join(Session, Session.id == PickingItem.session_id)
+            .outerjoin(Operator, Operator.id == Session.operator_id)
+            .filter(PickingItem.sku.in_(skus), Session.status != "completed")
+            .filter(PickingItem.qty_picked == 0) # Só sugere transferir o que não começou
+            .order_by(PickingItem.qty_required.desc())
+            .all()
+        )
+        if other_rows:
+            other_item, other_session, other_op = other_rows[0]
+            return {
+                "status": "wrong_session",
+                "action": "transfer_available",
+                "item_id": other_item.id,
+                "sku": other_item.sku,
+                "owner_name": other_op.name if other_op else "Disponível",
+                "barcode": barcode
+            }
+
         bc = db.query(Barcode).filter(Barcode.barcode == barcode, Barcode.sku == target_sku).first()
         description = (bc.description if bc else None) or (
             db.query(PickingItem.description)
@@ -177,6 +199,29 @@ def process_scan_box(
     if not items:
         if not is_barcode:
             return {"status": "unknown_barcode", "barcode": barcode}
+            
+        # --- NOVO: Tenta localizar esse SKU em outras sessões para sugerir transferência ---
+        other_rows = (
+            db.query(PickingItem, Session, Operator)
+            .join(Session, Session.id == PickingItem.session_id)
+            .outerjoin(Operator, Operator.id == Session.operator_id)
+            .filter(PickingItem.sku.in_(skus), Session.status != "completed")
+            .filter(PickingItem.qty_picked == 0)
+            .order_by(PickingItem.qty_required.desc())
+            .all()
+        )
+        if other_rows:
+            other_item, other_session, other_op = other_rows[0]
+            return {
+                "status": "wrong_session",
+                "action": "transfer_available",
+                "item_id": other_item.id,
+                "sku": other_item.sku,
+                "owner_name": other_op.name if other_op else "Disponível",
+                "barcode": barcode
+            }
+
+        return {"status": "wrong_session", "barcode": barcode, "sku": skus[0]}
 
     if len(items) > 1 and not focus_sku:
         return {

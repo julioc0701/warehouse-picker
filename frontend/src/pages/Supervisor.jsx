@@ -60,7 +60,7 @@ function OperatorRanking() {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          {data.slice(0, 5).map((op, idx) => (
+          {data.slice(0, 10).map((op, idx) => (
             <div key={op.name} className="relative group">
               <div className="flex justify-between items-center mb-1 pr-2">
                 <span className="text-sm font-bold text-gray-700 flex items-center gap-2">
