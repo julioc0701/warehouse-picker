@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import SubstitutionDialog from '../components/dialogs/SubstitutionDialog'
 import TransferConfirmDialog from '../components/dialogs/TransferConfirmDialog'
 import SearchSelectionDialog from '../components/dialogs/SearchSelectionDialog'
 import Header from '../components/Header'
