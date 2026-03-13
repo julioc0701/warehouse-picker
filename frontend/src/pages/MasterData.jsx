@@ -281,15 +281,34 @@ function OperatorRanking() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.getOperatorRanking().then(res => {
-      setData(res)
-      setLoading(false)
-    }).catch(() => setLoading(false))
+    console.log("[Ranking] Buscando dados...")
+    api.getOperatorRanking()
+      .then(res => {
+        console.log("[Ranking] Sucesso:", res)
+        if (Array.isArray(res)) {
+          setData(res)
+        } else {
+          console.error("[Ranking] Resposta não é um array:", res)
+        }
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error("[Ranking] Erro na requisição:", err)
+        setLoading(false)
+      })
   }, [])
 
-  if (loading) return <div className="h-48 flex items-center justify-center text-gray-400">Carregando ranking...</div>
+  if (loading) return (
+    <div className="bg-white rounded-2xl shadow p-6 mb-4 animate-pulse">
+      <div className="h-4 w-32 bg-gray-200 rounded mb-4"></div>
+      <div className="space-y-3">
+        <div className="h-3 bg-gray-100 rounded"></div>
+        <div className="h-3 bg-gray-100 rounded"></div>
+      </div>
+    </div>
+  )
 
-  const max = data.length > 0 ? Math.max(...data.map(d => d.total), 1) : 1
+  const maxValue = data.length > 0 ? Math.max(...data.map(d => d.total || 0), 1) : 1
 
   return (
     <div className="bg-white rounded-2xl shadow p-6 mb-4">
@@ -302,7 +321,7 @@ function OperatorRanking() {
       
       {data.length === 0 ? (
         <div className="text-center py-8 text-gray-400 italic text-sm">
-          Nenhuma atividade registrada ainda hoje.
+          Nenhuma atividade registrada ainda nos eventos de scan.
         </div>
       ) : (
         <div className="flex flex-col gap-4">
@@ -317,13 +336,13 @@ function OperatorRanking() {
                   </span>
                   {op.name}
                 </span>
-                <span className="text-xs font-mono font-bold text-blue-600">{op.total.toLocaleString()}</span>
+                <span className="text-xs font-mono font-bold text-blue-600">{(op.total || 0).toLocaleString()}</span>
               </div>
               <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden shadow-inner flex items-center">
                 <div 
                   className="h-full rounded-full transition-all duration-1000 ease-out"
                   style={{ 
-                    width: `${(op.total / max) * 100}%`,
+                    width: `${((op.total || 0) / maxValue) * 100}%`,
                     background: `linear-gradient(90deg, ${
                       idx === 0 ? '#fbbf24, #f59e0b' : idx === 1 ? '#9ca3af, #6b7280' : idx === 2 ? '#fb923c, #f97316' : '#60a5fa, #3b82f6'
                     })`
@@ -460,9 +479,9 @@ export default function MasterData() {
       </div>
 
       <div className="flex-1 p-6 max-w-5xl mx-auto w-full flex flex-col gap-4">
-
+        {/* v2.1-ranking-fix */}
         {/* Dashboard Area */}
-        {!search && <OperatorRanking />}
+        {search.trim() === '' && <OperatorRanking />}
 
         {/* Search */}
         <div className="bg-white rounded-2xl shadow p-4">
