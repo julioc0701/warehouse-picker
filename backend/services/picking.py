@@ -425,3 +425,44 @@ def _item_dict(item: PickingItem) -> dict:
         "labels_ready": item.status in ("complete", "partial", "out_of_stock") and item.qty_picked > 0,
         "labels_printed": item.labels_printed,
     }
+def reallocate_item(db: DBSession, item_id: int, operator_id: int) -> Session:
+    """
+    Moves a PickingItem and its Labels to a new "EXTRA" session for the given operator.
+    Returns the newly created Session.
+    """
+    item = db.query(PickingItem).filter(PickingItem.id == item_id).first()
+    if not item:
+        raise ValueError("Item não encontrado")
+    
+    if item.qty_picked > 0:
+        raise ValueError("Não é possível transferir um item que já possui unidades coletadas")
+
+    old_session = db.query(Session).filter(Session.id == item.session_id).first()
+    
+    # Create the new EXTRA session
+    new_code = f"EXT-{old_session.session_code}-{datetime.utcnow().strftime('%M%S')}"
+    new_sess = Session(
+        session_code=new_code,
+        operator_id=operator_id,
+        status="open" # Will go to in_progress on first scan
+    )
+    db.add(new_sess)
+    db.flush()
+
+    # Move the item
+    item.session_id = new_sess.id
+    
+    # Move the labels associated with this SKU in the old session
+    labels = db.query(Label).filter(
+        Label.session_id == old_session.id,
+        Label.sku == item.sku
+    ).all()
+    for lb in labels:
+        lb.session_id = new_sess.id
+
+    # Check if the old session is now empty or complete
+    db.flush() 
+    _auto_complete_session(db, old_session.id)
+    
+    db.commit()
+    return new_sess

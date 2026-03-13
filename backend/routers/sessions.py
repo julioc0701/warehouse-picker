@@ -321,11 +321,21 @@ def find_by_barcode(
     if item.status in terminal:
         action = "already_done"
     elif operator and operator.id != operator_id:
-        action = "in_progress_other"
+        if item.qty_picked == 0:
+            action = "transfer_available"
+        else:
+            action = "in_progress_other"
     else:
         action = "open"
 
-    return {"action": action, "sku": sku, "barcode": barcode, "best_match": match}
+    return {
+        "action": action, 
+        "sku": sku, 
+        "barcode": barcode, 
+        "best_match": match,
+        "item_id": item.id if action == "transfer_available" else None,
+        "owner_name": operator.name if (operator and action == "transfer_available") else None
+    }
 
 
 @router.get("/shortage-report")
@@ -521,6 +531,30 @@ def delete_session(session_id: int, db: DBSession = Depends(get_db)):
     db.delete(sess)
     db.commit()
     return {"status": "ok"}
+
+
+class TransferBody(BaseModel):
+    item_id: int
+    operator_id: int
+
+@router.post("/transfer", status_code=201)
+def transfer_item_api(body: TransferBody, db: DBSession = Depends(get_db)):
+    """
+    Endpoint to trigger an item reallocation.
+    Used by both scan auto-transfer and Supervisor manual transfer.
+    """
+    try:
+        new_sess = svc.reallocate_item(db, body.item_id, body.operator_id)
+        return {
+            "status": "ok",
+            "new_session_id": new_sess.id,
+            "new_session_code": new_sess.session_code
+        }
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.exception("Erro ao transferir item")
+        raise HTTPException(500, "Erro interno ao processar transferência")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

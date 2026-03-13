@@ -38,6 +38,7 @@ export const api = {
   findByBarcode: (barcode, operatorId) =>
     req('GET', `/sessions/find-by-barcode?barcode=${encodeURIComponent(barcode)}&operator_id=${operatorId}`),
   getShortageReport: () => req('GET', '/sessions/shortage-report'),
+  transferItem: (itemId, operatorId) => req('POST', '/sessions/transfer', { item_id: itemId, operator_id: operatorId }),
 
   // Picking actions
   scan: (sessionId, barcode, operatorId, focusSku = null) =>

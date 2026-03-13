@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
+import SubstitutionDialog from '../components/dialogs/SubstitutionDialog'
+import TransferConfirmDialog from '../components/dialogs/TransferConfirmDialog'
+import Header from '../components/Header'
 import ShortageDialog from '../components/dialogs/ShortageDialog'
 import UnknownBarcodeDialog from '../components/dialogs/UnknownBarcodeDialog'
 import WrongSkuDialog from '../components/dialogs/WrongSkuDialog'
@@ -94,12 +97,15 @@ export default function Picking() {
 
   const [session, setSession] = useState(null)
   const [item, setItem] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [transferData, setTransferData] = useState(null) // { item_id, sku, ownerName }
   const [recentItems, setRecentItems] = useState([])
   const [barcode, setBarcode] = useState('')
   const [flash, setFlash] = useState(null) // 'ok' | 'error' | 'complete'
   const [dialog, setDialog] = useState(null)
   const [printers, setPrinters] = useState([])
   const [selectedPrinter, setSelectedPrinter] = useState(null)
+  const [wrongItem, setWrongItem] = useState(null) // For wrong_session or in_progress_other
 
   // printStatus: null | 'printing' | 'done' | 'error'
   const [printStatus, setPrintStatus] = useState(null)
@@ -109,7 +115,7 @@ export default function Picking() {
   const [allItems, setAllItems] = useState([])
   const [scanMode, setScanMode] = useState('unit') // 'unit' | 'box'
 
-  const inputRef = useRef()
+  const inputRef = useRef(null)
 
   const focusInput = useCallback(() => {
     setTimeout(() => inputRef.current?.focus(), 80)
@@ -227,7 +233,14 @@ export default function Picking() {
         return
 
       case 'wrong_session':
-        setDialog({ type: 'wrong_session', data: { barcode: code, sku: res.sku, description: res.description } })
+        if (res.action === 'transfer_available') {
+          setBarcode('')
+          setTransferData({ item_id: res.item_id, sku: res.sku, ownerName: res.owner_name })
+        } else if (res.action === 'in_progress_other') {
+          setDialog({ type: 'wrong_sku', data: { ...res, barcode: code } })
+        } else {
+          setWrongItem({ sku: res.sku, description: res.description })
+        }
         return
 
       case 'wrong_sku':
@@ -440,6 +453,21 @@ export default function Picking() {
     focusInput()
   }
 
+  async function handleTransfer() {
+    if (!transferData) return
+    setSubmitting(true)
+    try {
+      const res = await api.transferItem(transferData.item_id, operator.id)
+      setTransferData(null)
+      // Redirect to the newly created session
+      navigate(`/picking/${res.new_session_id}`)
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center min-h-screen text-3xl text-gray-400">Carregando...</div>
 
   const progress = session?.progress || {}
@@ -449,6 +477,15 @@ export default function Picking() {
     <div className={`min-h-screen flex flex-col transition-colors duration-300 ${
       flash === 'ok' ? 'bg-green-50' : flash === 'error' ? 'bg-red-50' : flash === 'complete' ? 'bg-green-100' : 'bg-gray-100'
     }`}>
+
+        {transferData && (
+          <TransferConfirmDialog
+            sku={transferData.sku}
+            ownerName={transferData.ownerName}
+            onConfirm={handleTransfer}
+            onCancel={() => setTransferData(null)}
+          />
+        )}
 
       {/* Header */}
       <div className="bg-white shadow px-6 py-4 flex flex-col gap-2">

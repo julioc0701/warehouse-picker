@@ -298,6 +298,9 @@ function SessionRow({ s, onDeleted }) {
   const [confirmReopen, setConfirmReopen] = useState(false) // reopen confirm
   const [deleting, setDeleting] = useState(false)
   const [reopening, setReopening] = useState(false)
+  const [details, setDetails] = useState(false) // toggle item list
+  const [items, setItems] = useState([])
+  const [loadingItems, setLoadingItems] = useState(false)
   const [errMsg, setErrMsg] = useState(null)
   const pct = s.items_total ? Math.round((s.items_picked / s.items_total) * 100) : 0
 
@@ -312,6 +315,34 @@ function SessionRow({ s, onDeleted }) {
       setTimeout(() => setErrMsg(null), 3000)
     } finally {
       setReopening(false)
+    }
+  }
+
+  async function toggleDetails() {
+    if (details) {
+      setDetails(false)
+      return
+    }
+    setLoadingItems(true)
+    setDetails(true)
+    try {
+      const data = await api.getItems(s.id)
+      setItems(data)
+    } catch (err) {
+      setErrMsg(err.message)
+    } finally {
+      setLoadingItems(false)
+    }
+  }
+
+  async function handleTransfer(itemId) {
+    if (!window.confirm('Transferir este item para uma nova lista disponível?')) return
+    try {
+      await api.transferItem(itemId, 0) // operator 0 means unassigned for now
+      toggleDetails() // refresh items
+      onDeleted() // refresh session list
+    } catch (err) {
+      alert(err.message)
     }
   }
 
@@ -349,6 +380,12 @@ function SessionRow({ s, onDeleted }) {
           </div>
           <span className="text-sm text-gray-600 whitespace-nowrap">{s.items_picked}/{s.items_total}</span>
         </div>
+        <button
+          onClick={toggleDetails}
+          className="text-sm text-blue-500 hover:underline px-2"
+        >
+          {details ? 'Ocultar' : 'Ver SKUs'}
+        </button>
         {(s.status === 'completed' || s.status === 'in_progress') && !confirmReopen ? (
           <button
             onClick={() => setConfirmReopen(true)}
@@ -429,6 +466,53 @@ function SessionRow({ s, onDeleted }) {
       {/* Error message */}
       {errMsg && (
         <p className="text-xs text-red-500 pb-2 pl-1">{errMsg}</p>
+      )}
+
+      {/* Item Details */}
+      {details && (
+        <div className="bg-gray-50 m-2 rounded-xl p-4 border-2 border-gray-100">
+          {loadingItems ? (
+            <p className="text-center text-gray-400">Carregando itens...</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-400 text-left border-b border-gray-200">
+                  <th className="pb-2 font-medium">SKU</th>
+                  <th className="pb-2 font-medium">Qtd</th>
+                  <th className="pb-2 font-medium">Status</th>
+                  <th className="pb-2 font-medium text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => (
+                  <tr key={item.id} className="border-b border-gray-100 last:border-0">
+                    <td className="py-2 font-mono">{item.sku}</td>
+                    <td className="py-2">{item.qty_picked}/{item.qty_required}</td>
+                    <td className="py-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        item.status === 'complete' ? 'bg-green-100 text-green-700' :
+                        item.status === 'pending' ? 'bg-gray-200 text-gray-600' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="py-2 text-right">
+                      {item.qty_picked === 0 && (
+                        <button
+                          onClick={() => handleTransfer(item.id)}
+                          className="text-xs font-bold text-orange-600 hover:text-orange-800"
+                        >
+                          TRANSFERIR
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
     </div>
   )
