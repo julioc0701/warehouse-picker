@@ -390,37 +390,40 @@ export default function Picking() {
     const fullZpl = blocks.join('\n')
 
     try {
-      // 1. Tenta impressão DIRETA (Agente Local HTTP na porta 9100)
-      // Nota: Em PRD (HTTPS), isso costuma ser bloqueado por Mixed Content.
-      try {
-        console.log('Tentando impressão direta via 127.0.0.1:9100...')
-        await fetch(PRINT_AGENT_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: fullZpl,
-          mode: 'no-cors',
-          signal: AbortSignal.timeout(2000), // Timeout curto para falhar rápido
-        })
-        console.log('Comando direto enviado (no-cors).')
-        
-        // Se conseguimos enviar (mesmo sem ler a resposta), marcamos como impresso
-        await api.markPrinted(sessionId, pickedItem.sku)
-        setPrintStatus('done')
-        return
-      } catch (directErr) {
-        console.warn('Impressão direta falhou ou foi bloqueada. Tentando fila do servidor...', directErr)
+      const isHttps = window.location.protocol === 'https:'
+      
+      // 1. Tenta impressão DIRETA se estiver em HTTP (Localhost)
+      // Em HTTPS (Produção), os navegadores bloqueiam chamadas HTTP locais (Mixed Content).
+      if (!isHttps) {
+        try {
+          console.log('Ambiente HTTP detectado. Tentando impressão direta via 127.0.0.1:9100...')
+          await fetch(PRINT_AGENT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: fullZpl,
+            mode: 'no-cors',
+            signal: AbortSignal.timeout(1500),
+          })
+          console.log('Comando direto enviado.')
+          await api.markPrinted(sessionId, pickedItem.sku)
+          setPrintStatus('done')
+          return
+        } catch (directErr) {
+          console.warn('Impressão direta falhou. Seguindo para fila do servidor...', directErr)
+        }
+      } else {
+        console.log('Ambiente HTTPS (Produção). Ignorando impressão direta para evitar bloqueio do navegador.')
       }
 
-      // 2. FALLBACK: Fila de Impressão (Polling)
-      // Envia o job para o backend. O Agente (iniciar_producao.bat) vai "puxar" e imprimir.
-      console.log('Enviando job para fila de impressão do servidor...')
+      // 2. FILA DE IMPRESSÃO (Polling) — Modo padrão para Produção (HTTPS)
+      console.log('Enviando job para fila de impressão do servidor (Polling)...')
       await api.createPrintJob(sessionId, pickedItem.sku, fullZpl, operator?.id)
       
-      // O backend volta um job PENDING. O Agente local vai pegar em até 5 segundos.
+      // O Agente (iniciar_producao.bat) vai "puxar" esse job automaticamente.
       setPrintStatus('done')
 
     } catch (err) {
-      console.error('Erro em ambos os métodos de impressão:', err)
+      console.error('Erro ao processar impressão:', err)
       const msg = err?.message || 'Erro inesperado na impressão'
       setPrintError(msg)
       setPrintStatus('error')
