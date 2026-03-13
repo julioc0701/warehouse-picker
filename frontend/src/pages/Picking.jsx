@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import SubstitutionDialog from '../components/dialogs/SubstitutionDialog'
 import TransferConfirmDialog from '../components/dialogs/TransferConfirmDialog'
+import SearchSelectionDialog from '../components/dialogs/SearchSelectionDialog'
 import Header from '../components/Header'
 import ShortageDialog from '../components/dialogs/ShortageDialog'
 import UnknownBarcodeDialog from '../components/dialogs/UnknownBarcodeDialog'
@@ -230,6 +231,10 @@ export default function Picking() {
 
       case 'unknown_barcode':
         setDialog({ type: 'unknown', data: { barcode: code } })
+        return
+
+      case 'multiple_matches':
+        setDialog({ type: 'multiple_matches', data: { candidates: res.candidates } })
         return
 
       case 'wrong_session':
@@ -468,6 +473,25 @@ export default function Picking() {
     }
   }
 
+  async function onSelectSearchResult(candidate) {
+    setDialog(null)
+    // Se o item é da própria lista, apenas foca ou seleciona
+    if (candidate.session_id === parseInt(sessionId)) {
+      if (focusSku === candidate.sku) {
+          // Já está nele
+      } else {
+          navigate(`/picking/${sessionId}?sku=${encodeURIComponent(candidate.sku)}`)
+      }
+    } else {
+        // Se for de outra lista, bipa o SKU dele especificamente pra disparar o fluxo de transferência
+        setBarcode(candidate.sku)
+        // Precisamos esperar o estado atualizar ou chamar handleScan manualmente
+        // Vou forçar o handleScan com o SKU selecionado
+        const res = await api.findByBarcode(candidate.sku, operator.id)
+        updateFromResponse(res, candidate.sku)
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center min-h-screen text-3xl text-gray-400">Carregando...</div>
 
   const progress = session?.progress || {}
@@ -484,6 +508,13 @@ export default function Picking() {
             ownerName={transferData.ownerName}
             onConfirm={handleTransfer}
             onCancel={() => setTransferData(null)}
+          />
+        )}
+        {dialog?.type === 'multiple_matches' && (
+          <SearchSelectionDialog
+            candidates={dialog.data.candidates}
+            onSelect={onSelectSearchResult}
+            onCancel={() => setDialog(null)}
           />
         )}
 

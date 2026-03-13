@@ -236,26 +236,52 @@ def find_by_barcode(
     # 2. If no barcode match, try SKU or Description (partial match)
     if not sku:
         like_query = f"%{barcode}%"
-        # Search in PickingItem directly to find active instances
-        # and prioritize exact SKU match over description match
+        # Search for candidates in PickingItem directly
         from sqlalchemy import case
-        best_item = (
-            db.query(PickingItem)
+        candidates_query = (
+            db.query(PickingItem, Session, Operator.name.label("operator_name"))
             .join(Session, Session.id == PickingItem.session_id)
+            .outerjoin(Operator, Operator.id == Session.operator_id)
+            .filter(Session.status != "completed")
             .filter(
-                Session.status != "completed",
-                (PickingItem.sku == barcode) | (PickingItem.sku.ilike(like_query)) | (PickingItem.description.ilike(like_query))
+                (PickingItem.sku == barcode) | 
+                (PickingItem.sku.ilike(like_query)) | 
+                (PickingItem.description.ilike(like_query))
             )
             .order_by(
                 case((PickingItem.sku == barcode, 1), else_=0).desc(),  # Exact SKU first
                 PickingItem.qty_required.desc()                         # Then by volume
             )
-            .first()
         )
-        if best_item:
-            sku = best_item.sku
-        else:
-            return {"action": "not_found", "barcode": barcode}
+        
+        matches = candidates_query.all()
+        
+        if not matches:
+             return {"action": "not_found", "barcode": barcode}
+
+        # If the top match is NOT an exact SKU, and there are multiple candidates, return list
+        top_item, _, _ = matches[0]
+        if top_item.sku != barcode and len(matches) > 1:
+            return {
+                "action": "multiple_matches",
+                "barcode": barcode,
+                "candidates": [
+                    {
+                        "item_id": m[0].id,
+                        "sku": m[0].sku,
+                        "description": m[0].description,
+                        "session_id": m[1].id,
+                        "session_code": m[1].session_code,
+                        "operator_name": m[2] or "Disponível",
+                        "qty_picked": m[0].qty_picked,
+                        "qty_required": m[0].qty_required,
+                        "status": m[0].status
+                    } for m in matches
+                ]
+            }
+        
+        # Otherwise, take the first one
+        sku = top_item.sku
 
     # 3. Find all items with this SKU in non-completed sessions, best first
     rows = (
@@ -314,13 +340,14 @@ def find_by_barcode(
         "description": item.description,
         "operator_id": operator.id if operator else None,
         "operator_name": operator.name if operator else None,
+        "item_id": item.id
     }
 
     # 3. Determine action
     terminal = {"complete", "partial", "out_of_stock"}
     if item.status in terminal:
         action = "already_done"
-    elif operator and operator.id != operator_id:
+    elif session.operator_id and session.operator_id != operator_id:
         if item.qty_picked == 0:
             action = "transfer_available"
         else:
@@ -330,10 +357,10 @@ def find_by_barcode(
 
     return {
         "action": action, 
-        "sku": sku, 
+        "sku": item.sku, 
         "barcode": barcode, 
         "best_match": match,
-        "item_id": item.id if action == "transfer_available" else None,
+        "item_id": item.id if action == "transfer_available" else item.id,
         "owner_name": operator.name if (operator and action == "transfer_available") else None
     }
 
