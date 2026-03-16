@@ -24,38 +24,55 @@ if "/data/" in DATABASE_URL:
     else:
         print("--- DATABASE DEBUG: Target file does NOT exist. ---")
 
-    raw_force_seed = os.getenv("FORCE_SEED", "false")
+    raw_force_seed = str(os.getenv("FORCE_SEED", "false")).strip().lower()
     print(f"--- DATABASE DEBUG: Raw FORCE_SEED value is '{raw_force_seed}' ---")
-    force_seed = raw_force_seed.lower() in ("true", "1", "yes")
+    force_seed = raw_force_seed in ("true", "1", "yes")
     
-    # Also seed if the target is suspiciously small (like an empty SQLite file)
-    is_empty_ish = os.path.exists(db_path) and os.path.getsize(db_path) < 20000 
+    # Nuclear option: if the file is smaller than our known good local DB, it's probably wrong
+    # Local is ~110KB. If it's <50KB, it's definitely not the right data.
+    is_too_small = os.path.exists(db_path) and os.path.getsize(db_path) < 50000
     
-    if not os.path.exists(db_path) or force_seed or is_empty_ish:
+    if not os.path.exists(db_path) or force_seed or is_too_small:
         import shutil
         current_dir = os.path.dirname(__file__)
         seed_path = os.path.abspath(os.path.join(current_dir, "warehouse_v2.db"))
         print(f"--- DATABASE DEBUG: Looking for seed source at '{seed_path}' ---")
         
-        # List files in backend/ to be sure
-        files_in_backend = os.listdir(current_dir)
-        print(f"--- DATABASE DEBUG: Files in {current_dir}: {files_in_backend} ---")
-        
         if os.path.exists(seed_path):
             try:
-                print(f"--- SEED: Copying {seed_path} ({os.path.getsize(seed_path)} bytes) to {db_path} ---")
+                print(f"--- SEED: Copying repo DB ({os.path.getsize(seed_path)} bytes) to volume ({db_path}) ---")
                 os.makedirs(os.path.dirname(db_path), exist_ok=True)
                 shutil.copy2(seed_path, db_path)
-                print(f"--- SEED: Success! New size at target: {os.path.getsize(db_path)} bytes ---")
+                print(f"--- SEED DONE: Success! Size: {os.path.getsize(db_path)} bytes ---")
             except Exception as e:
                 print(f"--- SEED ERROR: Failed to copy: {e} ---")
         else:
-            print(f"--- SEED ERROR: Seed file '{seed_path}' not found in the repo! ---")
+             print(f"--- SEED ERROR: Source '{seed_path}' not found in bundle! ---")
     else:
-        print(f"--- DATABASE DEBUG: Data seems healthy at {db_path}, skipping seed. ---")
+        print(f"--- DATABASE DEBUG: Data exists ({os.path.getsize(db_path)} bytes). skipping seed. ---")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# DEBUG: Check table counts immediately on startup
+try:
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        # Check if tables exist first
+        res = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='operators'")).fetchone()
+        if res:
+            op_count = conn.execute(text("SELECT COUNT(*) FROM operators")).scalar()
+            sess_count = conn.execute(text("SELECT COUNT(*) FROM sessions")).scalar()
+            sku_count = conn.execute(text("SELECT COUNT(*) FROM barcodes")).scalar()
+            print(f"--- DATA VERIFICATION ---")
+            print(f"--- Total Operators: {op_count} ---")
+            print(f"--- Total Sessions: {sess_count} ---")
+            print(f"--- Total Barcodes: {sku_count} ---")
+            print(f"-------------------------")
+        else:
+            print("--- DATA VERIFICATION: Tables not found yet! ---")
+except Exception as e:
+    print(f"--- DATA VERIFICATION ERROR: {e} ---")
 
 
 class Base(DeclarativeBase):
