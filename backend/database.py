@@ -5,21 +5,40 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 # In production (Railway), set DATABASE_URL=sqlite:////data/warehouse_v2.db
 # and mount a persistent volume at /data
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./warehouse_v2.db")
-print(f"--- DATABASE: Using {DATABASE_URL} ---")
+print(f"--- DATABASE DEBUG: URL is '{DATABASE_URL}' ---")
 
-# Automated Migration (Seed)
-# If we are in production and the volume DB doesn't exist, copy the one from repo
-if DATABASE_URL.startswith("sqlite:////data/"):
-    db_path = DATABASE_URL.replace("sqlite:///", "")
+# Robust automated migration (Seed)
+# We check if the DB path is in a common persistent volume location (/data)
+if "/data/" in DATABASE_URL:
+    # Extract path from URL (handles sqlite:/// or sqlite:////)
+    clean_path = DATABASE_URL
+    for prefix in ["sqlite:////", "sqlite:///"]:
+        if clean_path.startswith(prefix):
+            clean_path = clean_path[len(prefix):]
+            break
+    
+    db_path = os.path.abspath(clean_path)
+    print(f"--- DATABASE DEBUG: Target path is '{db_path}' ---")
+    
     if not os.path.exists(db_path):
         import shutil
-        seed_path = os.path.join(os.path.dirname(__file__), "warehouse_v2.db")
+        seed_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "warehouse_v2.db"))
+        print(f"--- DATABASE DEBUG: Checking for seed at '{seed_path}' ---")
+        
         if os.path.exists(seed_path):
-            print(f"--- SEED: Copying {seed_path} to {db_path} ---")
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
-            shutil.copy2(seed_path, db_path)
+            try:
+                print(f"--- SEED: Copying {seed_path} to {db_path} ---")
+                os.makedirs(os.path.dirname(db_path), exist_ok=True)
+                shutil.copy2(seed_path, db_path)
+                print("--- SEED: Success! ---")
+            except Exception as e:
+                print(f"--- SEED ERROR: Failed to copy: {e} ---")
         else:
-            print(f"--- SEED: {seed_path} not found, starting fresh ---")
+            # List files in current dir to help debug
+            files_here = os.listdir(os.path.dirname(__file__))
+            print(f"--- SEED ERROR: Seed file not found. Files in backend: {files_here} ---")
+    else:
+        print(f"--- DATABASE DEBUG: File already exists at {db_path}, skipping seed. ---")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
