@@ -10,20 +10,23 @@ print(f"--- DATABASE DEBUG: URL is '{DATABASE_URL}' ---")
 # Robust automated migration (Seed)
 # We check if the DB path is in a common persistent volume location (/data)
 if "/data/" in DATABASE_URL:
-    # Extract path from URL (handles sqlite:/// or sqlite:////)
-    clean_path = DATABASE_URL
-    for prefix in ["sqlite:////", "sqlite:///"]:
-        if clean_path.startswith(prefix):
-            clean_path = clean_path[len(prefix):]
-            break
+    # Correctly handle absolute vs relative paths from sqlite:/// or sqlite:////
+    if DATABASE_URL.startswith("sqlite:////"):
+        db_path = DATABASE_URL.replace("sqlite:////", "/")
+    else:
+        db_path = DATABASE_URL.replace("sqlite:///", "")
     
-    db_path = os.path.abspath(clean_path)
-    print(f"--- DATABASE DEBUG: Target path is '{db_path}' ---")
+    db_path = os.path.abspath(db_path)
+    print(f"--- DATABASE DEBUG: Final target path is '{db_path}' ---")
     
-    if not os.path.exists(db_path):
+    # Check for a force seed flag (can be set in Railway variables if needed)
+    force_seed = os.getenv("FORCE_SEED", "false").lower() == "true"
+    
+    if not os.path.exists(db_path) or force_seed:
         import shutil
+        # Seed file is in the same directory as database.py (backend/)
         seed_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "warehouse_v2.db"))
-        print(f"--- DATABASE DEBUG: Checking for seed at '{seed_path}' ---")
+        print(f"--- DATABASE DEBUG: Looking for seed source at '{seed_path}' ---")
         
         if os.path.exists(seed_path):
             try:
@@ -34,11 +37,10 @@ if "/data/" in DATABASE_URL:
             except Exception as e:
                 print(f"--- SEED ERROR: Failed to copy: {e} ---")
         else:
-            # List files in current dir to help debug
             files_here = os.listdir(os.path.dirname(__file__))
-            print(f"--- SEED ERROR: Seed file not found. Files in backend: {files_here} ---")
+            print(f"--- SEED ERROR: Seed file '{seed_path}' not found. Files in backend: {files_here} ---")
     else:
-        print(f"--- DATABASE DEBUG: File already exists at {db_path}, skipping seed. ---")
+        print(f"--- DATABASE DEBUG: Data already exists at {db_path}, skipping seed. ---")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
