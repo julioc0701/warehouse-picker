@@ -8,9 +8,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./warehouse_v2.db")
 print(f"--- DATABASE DEBUG: URL is '{DATABASE_URL}' ---")
 
 # Robust automated migration (Seed)
-# We check if the DB path is in a common persistent volume location (/data)
 if "/data/" in DATABASE_URL:
-    # Correctly handle absolute vs relative paths from sqlite:/// or sqlite:////
     if DATABASE_URL.startswith("sqlite:////"):
         db_path = DATABASE_URL.replace("sqlite:////", "/")
     else:
@@ -19,28 +17,38 @@ if "/data/" in DATABASE_URL:
     db_path = os.path.abspath(db_path)
     print(f"--- DATABASE DEBUG: Final target path is '{db_path}' ---")
     
-    # Check for a force seed flag (can be set in Railway variables if needed)
+    # Check if target exists and its size
+    if os.path.exists(db_path):
+        size = os.path.getsize(db_path)
+        print(f"--- DATABASE DEBUG: Target file exists. Size: {size} bytes ---")
+    else:
+        print("--- DATABASE DEBUG: Target file does NOT exist. ---")
+
     force_seed = os.getenv("FORCE_SEED", "false").lower() == "true"
+    print(f"--- DATABASE DEBUG: FORCE_SEED is {force_seed} ---")
     
-    if not os.path.exists(db_path) or force_seed:
+    if not os.path.exists(db_path) or force_seed or (os.path.exists(db_path) and os.path.getsize(db_path) < 1000):
         import shutil
-        # Seed file is in the same directory as database.py (backend/)
-        seed_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "warehouse_v2.db"))
+        current_dir = os.path.dirname(__file__)
+        seed_path = os.path.abspath(os.path.join(current_dir, "warehouse_v2.db"))
         print(f"--- DATABASE DEBUG: Looking for seed source at '{seed_path}' ---")
+        
+        # List files in backend/ to be sure
+        files_in_backend = os.listdir(current_dir)
+        print(f"--- DATABASE DEBUG: Files in {current_dir}: {files_in_backend} ---")
         
         if os.path.exists(seed_path):
             try:
-                print(f"--- SEED: Copying {seed_path} to {db_path} ---")
+                print(f"--- SEED: Copying {seed_path} ({os.path.getsize(seed_path)} bytes) to {db_path} ---")
                 os.makedirs(os.path.dirname(db_path), exist_ok=True)
                 shutil.copy2(seed_path, db_path)
-                print("--- SEED: Success! ---")
+                print(f"--- SEED: Success! New size at target: {os.path.getsize(db_path)} bytes ---")
             except Exception as e:
                 print(f"--- SEED ERROR: Failed to copy: {e} ---")
         else:
-            files_here = os.listdir(os.path.dirname(__file__))
-            print(f"--- SEED ERROR: Seed file '{seed_path}' not found. Files in backend: {files_here} ---")
+            print(f"--- SEED ERROR: Seed file '{seed_path}' not found in the repo! ---")
     else:
-        print(f"--- DATABASE DEBUG: Data already exists at {db_path}, skipping seed. ---")
+        print(f"--- DATABASE DEBUG: Data seems healthy at {db_path}, skipping seed. ---")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
