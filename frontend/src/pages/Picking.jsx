@@ -302,6 +302,10 @@ export default function Picking() {
     setDialog(null)
     const res = await api.outOfStock(sessionId, item.sku, operator.id, notes)
     setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
+    if (res.item?.labels_ready) {
+      await autoPrintLabels(res.item)
+    }
+
     if (focusSku) {
       goBackToItems()
     } else {
