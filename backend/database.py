@@ -7,6 +7,20 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./warehouse_v2.db")
 print(f"--- DATABASE: Using {DATABASE_URL} ---")
 
+# Automated Migration (Seed)
+# If we are in production and the volume DB doesn't exist, copy the one from repo
+if DATABASE_URL.startswith("sqlite:////data/"):
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    if not os.path.exists(db_path):
+        import shutil
+        seed_path = os.path.join(os.path.dirname(__file__), "warehouse_v2.db")
+        if os.path.exists(seed_path):
+            print(f"--- SEED: Copying {seed_path} to {db_path} ---")
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            shutil.copy2(seed_path, db_path)
+        else:
+            print(f"--- SEED: {seed_path} not found, starting fresh ---")
+
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
