@@ -174,19 +174,19 @@ export default function Picking() {
           setDialog({ type: 'box_qty', data: { code } })
           return
         }
-        updateFromResponse(res, code)
+        await updateFromResponse(res, code)
         return
       }
 
       const res = await api.scan(sessionId, code, operator.id, focusSku || null)
-      updateFromResponse(res, code)
+      await updateFromResponse(res, code)
     } catch (err) {
       triggerFlash('error')
       focusInput()
     }
   }
 
-  function updateFromResponse(res, code) {
+  async function updateFromResponse(res, code) {
     if (res.progress) {
       setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
     }
@@ -385,7 +385,7 @@ export default function Picking() {
         }
       } else if (qty >= item.qty_required) {
         const res = await api.scanBox(sessionId, code, operator.id, focusSku || null)
-        updateFromResponse(res, code)
+        await updateFromResponse(res, code)
       }
     } catch (err) {
       triggerFlash('error')
