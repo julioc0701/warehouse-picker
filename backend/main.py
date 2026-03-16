@@ -43,7 +43,21 @@ def on_startup():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "2.1-assertive"}
+
+
+@app.get("/api/v2/sync")
+def sync_v2():
+    """Nuclear option for data sync via GET."""
+    import os, shutil
+    from database import DATABASE_URL
+    db_path = DATABASE_URL.replace("sqlite:////", "/").replace("sqlite:///", "")
+    db_path = os.path.abspath(db_path)
+    repo_db = os.path.abspath(os.path.join(os.path.dirname(__file__), "warehouse_v2.db"))
+    if not os.path.exists(repo_db):
+        return {"error": f"Repo DB not found at {repo_db}"}
+    shutil.copy2(repo_db, db_path)
+    return {"status": "success", "message": "DATA COPIED! Restarting app recommended."}
 
 
 @app.get("/api/admin/seed-now")
