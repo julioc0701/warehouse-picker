@@ -46,6 +46,35 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/api/admin/seed-now")
+def force_seed_endpoint():
+    """Force the copy of the repo DB to the volume path."""
+    import os
+    import shutil
+    from database import DATABASE_URL
+    
+    if "/data/" not in DATABASE_URL:
+        return {"status": "error", "message": "Not in production volume environment"}
+        
+    if DATABASE_URL.startswith("sqlite:////"):
+        db_path = DATABASE_URL.replace("sqlite:////", "/")
+    else:
+        db_path = DATABASE_URL.replace("sqlite:///", "")
+        
+    db_path = os.path.abspath(db_path)
+    # Inside container, backend file is in the same dir as this main.py or one level up
+    repo_db = os.path.abspath(os.path.join(os.path.dirname(__file__), "warehouse_v2.db"))
+    
+    if not os.path.exists(repo_db):
+        return {"status": "error", "message": f"Source DB not found at {repo_db}"}
+        
+    try:
+        shutil.copy2(repo_db, db_path)
+        return {"status": "ok", "message": "SUCCESS! File copied. Please restart your service now."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 # Serve React frontend (production build)
 # This must come AFTER all /api routes
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
