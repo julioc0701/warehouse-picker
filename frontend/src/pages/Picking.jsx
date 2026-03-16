@@ -291,11 +291,37 @@ export default function Picking() {
   }
 
   async function handleOutOfStock() {
-    if (item.qty_picked > 0) {
-      setDialog({ type: 'oos_confirm', data: { notes: '' } })
+    // Se o item já está concluído, abre o modal de ajuste por defeito
+    if (item.status === 'complete') {
+      setDialog({ type: 'defect_adjust', data: { defectQty: 0, reprint: false } })
       return
     }
     setDialog({ type: 'oos_confirm', data: { notes: '' } })
+  }
+
+  async function handleDefectAdjustConfirm({ defectQty, reprint }) {
+    setDialog(null)
+    // Calcula o qty_final válido
+    const validQty = Math.max(0, item.qty_picked - defectQty)
+    // Usa a API de shortage para reduzir a quantidade
+    const res = await api.shortage(sessionId, item.sku, validQty, operator.id, `Ajuste por defeito: ${defectQty} unidade(s) com problema`)
+    setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
+
+    // Só imprime se o checkbox estiver marcado
+    if (reprint && res.item?.labels_ready) {
+      await autoPrintLabels(res.item, true, validQty)
+    }
+
+    if (focusSku) {
+      goBackToItems()
+    } else {
+      setRecentItems(prev => [res.item, ...prev.slice(0, 4)])
+      const s = await api.getSession(sessionId)
+      setSession(s)
+      setItem(s.current_item)
+      if (!s.current_item) api.getItems(sessionId).then(setAllItems)
+      focusInput()
+    }
   }
 
   async function _doOutOfStock(notes) {
@@ -831,6 +857,14 @@ export default function Picking() {
         </div>
       )}
 
+      {dialog?.type === 'defect_adjust' && item && (
+        <DefectAdjustDialog
+          item={item}
+          onConfirm={handleDefectAdjustConfirm}
+          onCancel={() => { setDialog(null); focusInput() }}
+        />
+      )}
+
       {dialog?.type === 'shortage' && (
         <ShortageDialog
           item={item}
@@ -923,6 +957,116 @@ export default function Picking() {
           onCancel={() => { setDialog(null); focusInput() }}
         />
       )}
+    </div>
+  )
+}
+
+function DefectAdjustDialog({ item, onConfirm, onCancel }) {
+  const [defectQty, setDefectQty] = useState(0)
+  const [reprint, setReprint] = useState(false)
+
+  const defect = Math.max(0, Math.min(item.qty_picked, Number(defectQty) || 0))
+  const validQty = item.qty_picked - defect
+  const oosQty = defect
+
+  function handleConfirm() {
+    if (defect === 0) { onCancel(); return }
+    onConfirm({ defectQty: defect, reprint })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col gap-5 overflow-y-auto max-h-[95vh]">
+
+        {/* Header */}
+        <div className="px-6 pt-6">
+          <h2 className="text-2xl font-bold text-center text-orange-600">⚠ Ajuste por Defeito</h2>
+          <p className="text-center text-gray-500 text-sm mt-1">Item já concluído — informe a quantidade com problema</p>
+        </div>
+
+        {/* Info do item */}
+        <div className="mx-6 bg-gray-50 border-2 border-gray-200 rounded-xl p-4 text-center">
+          <p className="font-mono font-bold text-lg">{item.sku}</p>
+          {item.description && <p className="text-gray-500 text-xs mt-1 line-clamp-2">{item.description}</p>}
+          <p className="text-gray-400 text-xs mt-2">Quantidade coletada: <strong className="text-gray-700">{item.qty_picked}</strong> unidades</p>
+        </div>
+
+        {/* Input de qty com defeito */}
+        <div className="mx-6 flex flex-col gap-2">
+          <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
+            Quantas unidades têm problema?
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={item.qty_picked}
+            value={defectQty}
+            onChange={e => setDefectQty(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleConfirm() }}
+            onFocus={e => e.target.select()}
+            autoFocus
+            className="text-center text-4xl font-bold border-2 border-gray-300 focus:border-orange-400 rounded-xl py-4 outline-none"
+          />
+          {defect > item.qty_picked && (
+            <p className="text-red-500 text-xs text-center">Valor não pode ser maior que o coletado ({item.qty_picked})</p>
+          )}
+        </div>
+
+        {/* Cálculo automático */}
+        {defect > 0 && (
+          <div className="mx-6 bg-orange-50 border border-orange-200 rounded-xl p-4 flex flex-col gap-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Qtde coletada original:</span>
+              <span className="font-bold">{item.qty_picked}</span>
+            </div>
+            <div className="flex justify-between text-red-600">
+              <span>Com problema (sem estoque):</span>
+              <span className="font-bold">- {oosQty}</span>
+            </div>
+            <div className="border-t border-orange-200 mt-1 pt-1 flex justify-between text-green-700">
+              <span className="font-semibold">Quantidade válida final:</span>
+              <span className="font-bold text-lg">{validQty}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Checkbox Reimprimir */}
+        <div
+          className={`mx-6 flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors ${reprint ? 'bg-blue-50 border-blue-400' : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+            }`}
+          onClick={() => setReprint(v => !v)}
+        >
+          <div className={`w-5 h-5 rounded flex items-center justify-center border-2 flex-shrink-0 transition-colors ${reprint ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+            }`}>
+            {reprint && <span className="text-white text-xs font-bold">✓</span>}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-700">Reimprimir etiquetas</p>
+            <p className="text-xs text-gray-400">
+              {reprint
+                ? `Imprimirá ${validQty} etiqueta(s) com a quantidade válida`
+                : 'Apenas ajusta as quantidades, sem imprimir'}
+            </p>
+          </div>
+        </div>
+
+        {/* Botões */}
+        <div className="mx-6 mb-6 grid grid-cols-2 gap-3">
+          <button
+            onClick={onCancel}
+            className="py-4 rounded-xl border-2 border-gray-300 text-lg font-medium hover:bg-gray-100"
+          >
+            CANCELAR
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={defect === 0 || defect > item.qty_picked}
+            className="py-4 rounded-xl bg-orange-500 text-white text-lg font-bold hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            CONFIRMAR
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
