@@ -46,7 +46,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/api/admin/seed-now")
+@app.get("/api/admin/seed-now")
 def force_seed_endpoint():
     """Force the copy of the repo DB to the volume path."""
     import os
