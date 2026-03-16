@@ -24,10 +24,14 @@ if "/data/" in DATABASE_URL:
     else:
         print("--- DATABASE DEBUG: Target file does NOT exist. ---")
 
-    force_seed = os.getenv("FORCE_SEED", "false").lower() == "true"
-    print(f"--- DATABASE DEBUG: FORCE_SEED is {force_seed} ---")
+    raw_force_seed = os.getenv("FORCE_SEED", "false")
+    print(f"--- DATABASE DEBUG: Raw FORCE_SEED value is '{raw_force_seed}' ---")
+    force_seed = raw_force_seed.lower() in ("true", "1", "yes")
     
-    if not os.path.exists(db_path) or force_seed or (os.path.exists(db_path) and os.path.getsize(db_path) < 1000):
+    # Also seed if the target is suspiciously small (like an empty SQLite file)
+    is_empty_ish = os.path.exists(db_path) and os.path.getsize(db_path) < 20000 
+    
+    if not os.path.exists(db_path) or force_seed or is_empty_ish:
         import shutil
         current_dir = os.path.dirname(__file__)
         seed_path = os.path.abspath(os.path.join(current_dir, "warehouse_v2.db"))
