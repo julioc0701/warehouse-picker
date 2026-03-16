@@ -962,16 +962,16 @@ export default function Picking() {
 }
 
 function DefectAdjustDialog({ item, onConfirm, onCancel }) {
-  const [defectQty, setDefectQty] = useState(0)
+  const [validQtyInput, setValidQtyInput] = useState(item.qty_picked)
   const [reprint, setReprint] = useState(false)
 
-  const defect = Math.max(0, Math.min(item.qty_picked, Number(defectQty) || 0))
-  const validQty = item.qty_picked - defect
-  const oosQty = defect
+  const validQty = Math.max(0, Math.min(item.qty_picked, Number(validQtyInput) || 0))
+  const oosQty = item.qty_picked - validQty
+  const isInvalid = validQty >= item.qty_picked  // sem alteração = inválido
 
   function handleConfirm() {
-    if (defect === 0) { onCancel(); return }
-    onConfirm({ defectQty: defect, reprint })
+    if (isInvalid) return
+    onConfirm({ defectQty: oosQty, reprint })
   }
 
   return (
@@ -981,51 +981,51 @@ function DefectAdjustDialog({ item, onConfirm, onCancel }) {
         {/* Header */}
         <div className="px-6 pt-6">
           <h2 className="text-2xl font-bold text-center text-orange-600">⚠ Ajuste por Defeito</h2>
-          <p className="text-center text-gray-500 text-sm mt-1">Item já concluído — informe a quantidade com problema</p>
+          <p className="text-center text-gray-500 text-sm mt-1">Item já concluído — informe a quantidade real válida</p>
         </div>
 
         {/* Info do item */}
         <div className="mx-6 bg-gray-50 border-2 border-gray-200 rounded-xl p-4 text-center">
           <p className="font-mono font-bold text-lg">{item.sku}</p>
           {item.description && <p className="text-gray-500 text-xs mt-1 line-clamp-2">{item.description}</p>}
-          <p className="text-gray-400 text-xs mt-2">Quantidade coletada: <strong className="text-gray-700">{item.qty_picked}</strong> unidades</p>
+          <p className="text-gray-400 text-xs mt-2">Quantidade original coletada: <strong className="text-gray-700">{item.qty_picked}</strong></p>
         </div>
 
-        {/* Input de qty com defeito */}
+        {/* Input da quantidade real válida */}
         <div className="mx-6 flex flex-col gap-2">
           <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
-            Quantas unidades têm problema?
+            Quantidade real válida (sem defeito)
           </label>
           <input
             type="number"
             min={0}
-            max={item.qty_picked}
-            value={defectQty}
-            onChange={e => setDefectQty(e.target.value)}
+            max={item.qty_picked - 1}
+            value={validQtyInput}
+            onChange={e => setValidQtyInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleConfirm() }}
             onFocus={e => e.target.select()}
             autoFocus
             className="text-center text-4xl font-bold border-2 border-gray-300 focus:border-orange-400 rounded-xl py-4 outline-none"
           />
-          {defect > item.qty_picked && (
-            <p className="text-red-500 text-xs text-center">Valor não pode ser maior que o coletado ({item.qty_picked})</p>
+          {isInvalid && Number(validQtyInput) === item.qty_picked && (
+            <p className="text-orange-500 text-xs text-center">Reduza a quantidade para registrar a diferença</p>
           )}
         </div>
 
-        {/* Cálculo automático */}
-        {defect > 0 && (
+        {/* Cálculo automático — só mostra quando há diferença */}
+        {oosQty > 0 && (
           <div className="mx-6 bg-orange-50 border border-orange-200 rounded-xl p-4 flex flex-col gap-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-600">Qtde coletada original:</span>
+              <span className="text-gray-600">Qtde original coletada:</span>
               <span className="font-bold">{item.qty_picked}</span>
             </div>
-            <div className="flex justify-between text-red-600">
-              <span>Com problema (sem estoque):</span>
-              <span className="font-bold">- {oosQty}</span>
+            <div className="flex justify-between text-green-700">
+              <span>Qtde real válida:</span>
+              <span className="font-bold">{validQty}</span>
             </div>
-            <div className="border-t border-orange-200 mt-1 pt-1 flex justify-between text-green-700">
-              <span className="font-semibold">Quantidade válida final:</span>
-              <span className="font-bold text-lg">{validQty}</span>
+            <div className="border-t border-orange-200 mt-1 pt-1 flex justify-between text-red-600">
+              <span className="font-semibold">Irá para "sem estoque":</span>
+              <span className="font-bold text-lg">{oosQty} unidade(s)</span>
             </div>
           </div>
         )}
@@ -1060,7 +1060,7 @@ function DefectAdjustDialog({ item, onConfirm, onCancel }) {
           </button>
           <button
             onClick={handleConfirm}
-            disabled={defect === 0 || defect > item.qty_picked}
+            disabled={isInvalid}
             className="py-4 rounded-xl bg-orange-500 text-white text-lg font-bold hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             CONFIRMAR
