@@ -204,7 +204,7 @@ export default function Picking() {
         triggerFlash('complete')
         // Dispara impressão automática no agente local (porta 9100)
         if (res.item?.labels_ready) {
-          autoPrintLabels(res.item)
+          await autoPrintLabels(res.item)
         }
         if (focusSku) {
           setTimeout(goBackToItems, 600)
@@ -274,6 +274,10 @@ export default function Picking() {
     setDialog(null)
     const res = await api.shortage(sessionId, item.sku, qtyFound, operator.id, notes)
     setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
+    if (res.item?.labels_ready) {
+      await autoPrintLabels(res.item)
+    }
+
     if (focusSku) {
       goBackToItems()
     } else {
@@ -367,7 +371,7 @@ export default function Picking() {
         setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
         // Imprime as etiquetas da quantidade encontrada (qty_picked = qty)
         if (res.item?.labels_ready) {
-          autoPrintLabels(res.item)
+          await autoPrintLabels(res.item)
         }
         if (focusSku) {
           goBackToItems()
