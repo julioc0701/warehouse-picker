@@ -89,8 +89,9 @@ async def import_excel(
 
         for ean in ean_list:
             # Check if this EXACT ean-sku pair already exists to avoid redundant rows
-            pair_exists = db.query(Barcode).filter(Barcode.barcode == ean, Barcode.sku == sku).first()
-            if pair_exists:
+            # No longer skipping if EAN belongs to another SKU, only if it's the SAME SKU
+            already_added = (ean, sku) in existing
+            if already_added:
                 skipped += 1
                 continue
             
@@ -191,10 +192,16 @@ def remove_barcode_from_sku(sku: str, barcode: str, db: DBSession = Depends(get_
 
 @router.get("/resolve")
 def resolve_barcode(barcode: str = Query(...), db: DBSession = Depends(get_db)):
-    b = db.query(Barcode).filter(Barcode.barcode == barcode).first()
-    if not b:
+    rows = db.query(Barcode).filter(Barcode.barcode == barcode).all()
+    if not rows:
         raise HTTPException(404, "Código de barras não encontrado")
-    return {"barcode": barcode, "sku": b.sku}
+    
+    skus = list(set(r.sku for r in rows))
+    return {
+        "barcode": barcode, 
+        "sku": skus[0], # Legacy support
+        "skus": skus
+    }
 
 
 @router.get("/")

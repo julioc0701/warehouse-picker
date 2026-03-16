@@ -19,7 +19,8 @@ def get_current_item(db: DBSession, session_id: int) -> PickingItem | None:
 
 def resolve_barcode(db: DBSession, barcode: str) -> list[str]:
     """Return all SKUs for a barcode."""
-    entries = db.query(Barcode).filter(Barcode.barcode == barcode).all()
+    b = barcode.strip()
+    entries = db.query(Barcode).filter(Barcode.barcode == b).all()
     return list(set(e.sku for e in entries))
 
 
@@ -81,13 +82,20 @@ def process_scan(
                 "barcode": barcode
             }
 
-        bc = db.query(Barcode).filter(Barcode.barcode == barcode, Barcode.sku == target_sku).first()
+        target_sku = skus[0]
+        bc = db.query(Barcode).filter(Barcode.barcode == barcode.strip(), Barcode.sku == target_sku).first()
         description = (bc.description if bc else None) or (
             db.query(PickingItem.description)
             .filter(PickingItem.sku == target_sku, PickingItem.description.isnot(None))
             .scalar()
         )
-        return {"status": "wrong_session", "barcode": barcode, "sku": target_sku, "description": description}
+        return {
+            "status": "wrong_session", 
+            "barcode": barcode, 
+            "sku": target_sku, 
+            "description": description,
+            "all_skus": skus
+        }
 
     # SELECTION LOGIC for multiple SKUs for the same barcode
     if len(items) > 1 and not focus_sku:
@@ -101,21 +109,21 @@ def process_scan(
 
     # If we have a focus_sku, or only one match, we pick that one
     if focus_sku:
-        item = next((i for i in items if i.sku == focus_sku), None)
+        target_focus = focus_sku.strip().upper()
+        item = next((i for i in items if i.sku.upper() == target_focus), None)
         if not item:
-             # This shouldn't happen if frontend is correct
              return {"status": "error", "message": f"SKU focado {focus_sku} não encontrado para este código"}
     else:
         item = items[0]
 
-    sku = item.sku
+    sku = item.sku.upper()
     current = get_current_item(db, session_id)
 
     # Scanned a different SKU than what's expected.
     # Skip this check in focus mode: if the operator explicitly chose to scan
     # this SKU (focus_sku), allow it even if it's not the first pending item.
-    in_focus_mode = (focus_sku is not None and focus_sku == sku)
-    if current and current.sku != sku and not in_focus_mode:
+    in_focus_mode = (focus_sku is not None and focus_sku.strip().upper() == sku)
+    if current and current.sku.upper() != sku and not in_focus_mode:
         return {
             "status": "wrong_sku",
             "scanned_sku": sku,
@@ -140,8 +148,6 @@ def process_scan(
     res = db.execute(stmt)
 
     if res.rowcount == 0:
-        # Se 0 linhas foram afetadas, significa que ou não existe item ou ele já atingiu a cota `qty_picked >= qty_required`
-        # Isso protege contra duplo scan concorrente
         db.refresh(item)
         if item.qty_picked >= item.qty_required:
             return {"status": "excess", "item": _item_dict(item)}
@@ -391,6 +397,25 @@ def reset_item(db: DBSession, session_id: int, sku: str, operator_id: int) -> di
     return {"status": "ok", "item": _item_dict(item)}
 
 
+def force_complete_item(db: DBSession, session_id: int, sku: str, operator_id: int) -> dict:
+    """Force an item to complete — qty_picked=qty_required, status=complete."""
+    item = _get_item(db, session_id, sku)
+    if not item:
+        return {"status": "not_found"}
+
+    item.qty_picked = item.qty_required
+    item.shortage_qty = 0
+    item.status = "complete"
+    item.completed_at = datetime.utcnow()
+    # We do NOT call _create_print_job here because the user usually wants this 
+    # when labels are already printed/handled manually.
+
+    log_event(db, session_id, item.id, "FORCE_COMPLETE", operator_id, "force_complete", item.qty_required)
+    _auto_complete_session(db, session_id)
+    db.commit()
+    return {"status": "ok", "item": _item_dict(item)}
+
+
 def update_item_notes(db: DBSession, item_id: int, notes: str | None) -> dict:
     item = db.query(PickingItem).filter(PickingItem.id == item_id).first()
     if not item:
@@ -431,12 +456,27 @@ def reset_all_items(db: DBSession, session_id: int, operator_id: int) -> dict:
 
 
 def add_barcode(db: DBSession, barcode: str, sku: str, operator_id: int) -> dict:
-    existing = db.query(Barcode).filter(Barcode.barcode == barcode, Barcode.sku == sku).first()
+    b = barcode.strip()
+    s = sku.strip().upper()
+    existing = db.query(Barcode).filter(Barcode.barcode == b, Barcode.sku == s).first()
     if existing:
         return {"status": "already_exists", "sku": existing.sku}
-    entry = Barcode(barcode=barcode, sku=sku, is_primary=False, added_by=operator_id)
-    db.add(entry)
-    db.commit()
+    
+    # Check if there is a global constraint issue by catching IntegrityError
+    from sqlalchemy.exc import IntegrityError
+    try:
+        entry = Barcode(barcode=b, sku=s, is_primary=False, added_by=operator_id)
+        db.add(entry)
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        # If we hit a unique constraint on 'barcode', it means the DB doesn't allow ambiguity yet.
+        # But we want to allow it. We might need a structural change if it's a hard UNIQUE.
+        return {"status": "error", "message": f"Erro de banco de dados (provável restrição de unicidade): {str(e)}"}
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+
     return {"status": "ok"}
 
 

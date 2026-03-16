@@ -162,7 +162,7 @@ export default function Picking() {
     if (e && e.key !== 'Enter') return
     const code = (codeOverride || barcode || '').trim()
     if (!code) return
-    
+
     // Se não for override (bipagem real), limpa o campo
     if (!codeOverride) setBarcode('')
 
@@ -239,8 +239,16 @@ export default function Picking() {
         } else if (res.action === 'in_progress_other') {
           setDialog({ type: 'wrong_sku', data: { ...res, barcode: code } })
         } else {
-          // Fallback quando o barcode é conhecido mas não é transferível
-          setDialog({ type: 'wrong_session', data: { barcode: code, sku: res.sku, description: res.description } })
+          // Quando o barcode é conhecido mas não pertence a este item nem é transferível (ou o operador quer forçar vínculo)
+          setDialog({
+            type: 'wrong_session',
+            data: {
+              barcode: code,
+              sku: res.sku,
+              description: res.description,
+              all_skus: res.all_skus || [res.sku]
+            }
+          })
         }
         return
 
@@ -319,14 +327,20 @@ export default function Picking() {
   async function handleAddBarcode(code) {
     setDialog(null)
     if (item) {
-      await api.addBarcode(sessionId, code, item.sku, operator.id)
-      if (scanMode === 'box') {
-        // Barcode acabou de ser vinculado — abre dialog de quantidade
-        setDialog({ type: 'box_qty', data: { code } })
-        return
+      try {
+        await api.addBarcode(sessionId, code, item.sku, operator.id)
+        if (scanMode === 'box') {
+          // Barcode acabou de ser vinculado — abre dialog de quantidade
+          setDialog({ type: 'box_qty', data: { code } })
+          return
+        }
+        const res = await api.scan(sessionId, code, operator.id, focusSku || null)
+        updateFromResponse(res, code)
+      } catch (err) {
+        console.error('Erro ao vincular código:', err)
+        triggerFlash('error')
+        alert('Erro ao vincular código: ' + err.message)
       }
-      const res = await api.scan(sessionId, code, operator.id, focusSku || null)
-      updateFromResponse(res, code)
     }
     focusInput()
   }
@@ -408,7 +422,7 @@ export default function Picking() {
 
     try {
       const isHttps = window.location.protocol === 'https:'
-      
+
       // 1. Tenta impressão DIRETA se estiver em HTTP (Localhost)
       // Em HTTPS (Produção), os navegadores bloqueiam chamadas HTTP locais (Mixed Content).
       if (!isHttps) {
@@ -435,7 +449,7 @@ export default function Picking() {
       // 2. FILA DE IMPRESSÃO (Polling) — Modo padrão para Produção (HTTPS)
       console.log('Enviando job para fila de impressão do servidor (Polling)...')
       await api.createPrintJob(sessionId, pickedItem.sku, fullZpl, operator?.id)
-      
+
       // O Agente (iniciar_producao.bat) vai "puxar" esse job automaticamente.
       setPrintStatus('done')
 
@@ -498,25 +512,24 @@ export default function Picking() {
   const pct = progress.items_total ? Math.round((progress.items_picked / progress.items_total) * 100) : 0
 
   return (
-    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${
-      flash === 'ok' ? 'bg-green-50' : flash === 'error' ? 'bg-red-50' : flash === 'complete' ? 'bg-green-100' : 'bg-gray-100'
-    }`}>
+    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${flash === 'ok' ? 'bg-green-50' : flash === 'error' ? 'bg-red-50' : flash === 'complete' ? 'bg-green-100' : 'bg-gray-100'
+      }`}>
 
-        {transferData && (
-          <TransferConfirmDialog
-            sku={transferData.sku}
-            ownerName={transferData.ownerName}
-            onConfirm={handleTransfer}
-            onCancel={() => setTransferData(null)}
-          />
-        )}
-        {dialog?.type === 'multiple_matches' && (
-          <SearchSelectionDialog
-            candidates={dialog.data.candidates}
-            onSelect={onSelectSearchResult}
-            onCancel={() => setDialog(null)}
-          />
-        )}
+      {transferData && (
+        <TransferConfirmDialog
+          sku={transferData.sku}
+          ownerName={transferData.ownerName}
+          onConfirm={handleTransfer}
+          onCancel={() => setTransferData(null)}
+        />
+      )}
+      {dialog?.type === 'multiple_matches' && (
+        <SearchSelectionDialog
+          candidates={dialog.data.candidates}
+          onSelect={onSelectSearchResult}
+          onCancel={() => setDialog(null)}
+        />
+      )}
 
       {/* Header */}
       <div className="bg-white shadow px-6 py-4 flex flex-col gap-2">
@@ -558,11 +571,10 @@ export default function Picking() {
                 <button
                   onMouseDown={e => e.preventDefault()}
                   onClick={() => { setScanMode('unit'); focusInput() }}
-                  className={`py-3 px-4 rounded-xl text-sm font-bold border-2 transition-all ${
-                    scanMode === 'unit'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                      : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300'
-                  }`}
+                  className={`py-3 px-4 rounded-xl text-sm font-bold border-2 transition-all ${scanMode === 'unit'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300'
+                    }`}
                 >
                   <span className="block text-lg leading-none mb-1">1</span>
                   Unitário (1 a 1)
@@ -570,11 +582,10 @@ export default function Picking() {
                 <button
                   onMouseDown={e => e.preventDefault()}
                   onClick={() => { setScanMode('box'); focusInput() }}
-                  className={`py-3 px-4 rounded-xl text-sm font-bold border-2 transition-all ${
-                    scanMode === 'box'
-                      ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
-                      : 'bg-white text-gray-500 border-gray-200 hover:border-orange-300'
-                  }`}
+                  className={`py-3 px-4 rounded-xl text-sm font-bold border-2 transition-all ${scanMode === 'box'
+                    ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-orange-300'
+                    }`}
                 >
                   <span className="block text-lg leading-none mb-1">📦</span>
                   Caixa / Total
@@ -870,7 +881,7 @@ export default function Picking() {
             const code = dialog.data.barcode
             const sku = dialog.data.scanned_sku
             setDialog(null)
-            
+
             if (scanMode === 'box') {
               // Modo caixa: em vez de completar direto, bipa para focar o item e abre o dialog de qtde
               const res = await api.scan(sessionId, code, operator.id, sku)
@@ -969,12 +980,12 @@ function CompletionSummary({ items, onBack }) {
     )
   }
 
-  const complete   = items.filter(i => i.status === 'complete')
-  const partial    = items.filter(i => i.status === 'partial')
+  const complete = items.filter(i => i.status === 'complete')
+  const partial = items.filter(i => i.status === 'partial')
   const outOfStock = items.filter(i => i.status === 'out_of_stock')
   const totalPicked = items.reduce((s, i) => s + i.qty_picked, 0)
-  const totalShort  = items.reduce((s, i) => s + (i.shortage_qty || 0), 0)
-  const pendentes   = [...partial, ...outOfStock]
+  const totalShort = items.reduce((s, i) => s + (i.shortage_qty || 0), 0)
+  const pendentes = [...partial, ...outOfStock]
 
   return (
     <div className="flex flex-col gap-6">

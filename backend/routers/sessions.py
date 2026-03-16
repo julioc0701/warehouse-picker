@@ -105,13 +105,13 @@ async def upload_session(
     # Split items into batches of max 1000 units, sorted by qty desc
     batches = split_into_batches(items_data, max_units=1000)
 
-    # Pre-load existing barcodes to avoid duplicates
-    added_barcodes: set[str] = set(r[0] for r in db.query(Barcode.barcode).all())
+    # Pre-load existing barcodes to avoid duplicates (per SKU)
+    added_barcodes: set[tuple[str, str]] = set((r[0], r[1]) for r in db.query(Barcode.barcode, Barcode.sku).all())
 
     def add_barcode_safe(barcode: str, sku: str, is_primary: bool):
-        if barcode and barcode not in added_barcodes:
+        if barcode and (barcode, sku) not in added_barcodes:
             db.add(Barcode(barcode=barcode, sku=sku, is_primary=is_primary))
-            added_barcodes.add(barcode)
+            added_barcodes.add((barcode, sku))
 
     # Build SKU → labels map from ZPL
     sku_labels: dict[str, list] = {}
@@ -513,6 +513,18 @@ class ReopenBody(BaseModel):
 @router.post("/{session_id}/reopen")
 def reopen(session_id: int, body: ReopenBody, db: DBSession = Depends(get_db)):
     result = svc.reopen_item(db, session_id, body.sku, body.operator_id)
+    result["progress"] = svc.session_progress(db, session_id)
+    return result
+
+
+class ForceCompleteBody(BaseModel):
+    sku: str
+    operator_id: int
+
+
+@router.post("/{session_id}/force-complete")
+def force_complete(session_id: int, body: ForceCompleteBody, db: DBSession = Depends(get_db)):
+    result = svc.force_complete_item(db, session_id, body.sku, body.operator_id)
     result["progress"] = svc.session_progress(db, session_id)
     return result
 

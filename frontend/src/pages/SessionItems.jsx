@@ -3,18 +3,18 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 
 const STATUS_COLOR = {
-  pending:      'text-gray-400',
-  in_progress:  'text-blue-600',
-  complete:     'text-green-600',
-  partial:      'text-orange-500',
+  pending: 'text-gray-400',
+  in_progress: 'text-blue-600',
+  complete: 'text-green-600',
+  partial: 'text-orange-500',
   out_of_stock: 'text-red-500',
 }
 
 const STATUS_LABEL = {
-  pending:      'Pendente',
-  in_progress:  'Em separação',
-  complete:     '✓ Completo',
-  partial:      '⚠ Parcial',
+  pending: 'Pendente',
+  in_progress: 'Em separação',
+  complete: '✓ Completo',
+  partial: '⚠ Parcial',
   out_of_stock: '✗ Sem estoque',
 }
 
@@ -26,13 +26,13 @@ export default function SessionItems() {
   const navigate = useNavigate()
   const operator = JSON.parse(sessionStorage.getItem('operator') || 'null')
 
-  const [session, setSession]         = useState(null)
-  const [items, setItems]             = useState([])
-  const [barcode, setBarcode]         = useState('')
-  const [errMsg, setErrMsg]           = useState(null)
-  const [loading, setLoading]         = useState(true)
+  const [session, setSession] = useState(null)
+  const [items, setItems] = useState([])
+  const [barcode, setBarcode] = useState('')
+  const [errMsg, setErrMsg] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [confirmResetAll, setConfirmResetAll] = useState(false)
-  const [resettingAll, setResettingAll]       = useState(false)
+  const [resettingAll, setResettingAll] = useState(false)
   const inputRef = useRef()
 
   useEffect(() => {
@@ -61,9 +61,12 @@ export default function SessionItems() {
 
     try {
       const res = await api.resolveBarcode(code)
-      const found = items.find(i => i.sku === res.sku)
+      // Check all SKUs returned (a barcode can now be linked to multiple SKUs)
+      const resolvedSkus = res.skus || [res.sku]
+      const found = items.find(i => resolvedSkus.includes(i.sku))
+
       if (found) { goToPicking(found.sku); return }
-      setErrMsg(`SKU "${res.sku}" não está nesta lista`)
+      setErrMsg(`SKU(s) "${resolvedSkus.join(', ')}" não encontrado(s) nesta lista`)
     } catch {
       setErrMsg('Código de barras não encontrado')
     }
@@ -217,7 +220,7 @@ export default function SessionItems() {
 
 function ItemRow({ item, sessionId, operator, onNavigate, onReset }) {
   const [confirmReset, setConfirmReset] = useState(false)
-  const [resetting, setResetting]       = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   const canReset = RESETTABLE.includes(item.status)
 
@@ -228,7 +231,19 @@ function ItemRow({ item, sessionId, operator, onNavigate, onReset }) {
       await api.resetItem(sessionId, item.sku, operator.id)
       await onReset()
       setConfirmReset(false)
-    } catch {
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  async function doForceComplete(e) {
+    e.stopPropagation()
+    setResetting(true)
+    try {
+      await api.forceCompleteItem(sessionId, item.sku, operator.id)
+      await onReset()
+      setConfirmReset(false)
+    } finally {
       setResetting(false)
     }
   }
@@ -248,29 +263,37 @@ function ItemRow({ item, sessionId, operator, onNavigate, onReset }) {
       <td className="px-5 py-4 text-right" onClick={e => e.stopPropagation()}>
         {!confirmReset ? (
           <button
-            onClick={() => canReset && setConfirmReset(true)}
-            title={canReset ? 'Clique para reinicializar este item' : undefined}
-            className={`font-medium text-sm ${STATUS_COLOR[item.status]} ${
-              canReset ? 'hover:opacity-60 underline decoration-dotted cursor-pointer' : 'cursor-default'
-            }`}
+            onClick={() => setConfirmReset(true)}
+            title="Alterar status manualmente"
+            className={`font-medium text-sm ${STATUS_COLOR[item.status]} hover:opacity-60 underline decoration-dotted cursor-pointer`}
           >
             {STATUS_LABEL[item.status] || item.status}
           </button>
         ) : (
           <div className="flex items-center justify-end gap-1.5">
-            <span className="text-xs text-gray-500">Zerar item?</span>
+            {item.status !== 'pending' && (
+              <button
+                onClick={doReset}
+                disabled={resetting}
+                className="text-xs bg-orange-500 text-white rounded-lg px-2 py-1.5 hover:bg-orange-600 disabled:opacity-60 font-medium"
+              >
+                {resetting ? '...' : 'Zerar'}
+              </button>
+            )}
+            {item.status !== 'complete' && (
+              <button
+                onClick={doForceComplete}
+                disabled={resetting}
+                className="text-xs bg-green-600 text-white rounded-lg px-2 py-1.5 hover:bg-green-700 disabled:opacity-60 font-medium"
+              >
+                {resetting ? '...' : 'Concluir'}
+              </button>
+            )}
             <button
               onClick={e => { e.stopPropagation(); setConfirmReset(false) }}
-              className="text-xs border border-gray-300 rounded-lg px-2 py-1 hover:bg-gray-100 font-medium"
+              className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 hover:bg-gray-100 font-medium"
             >
-              Não
-            </button>
-            <button
-              onClick={doReset}
-              disabled={resetting}
-              className="text-xs bg-orange-500 text-white rounded-lg px-2 py-1 hover:bg-orange-600 disabled:opacity-60 font-medium"
-            >
-              {resetting ? '...' : 'Sim'}
+              ✗
             </button>
           </div>
         )}

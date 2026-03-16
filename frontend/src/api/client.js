@@ -57,6 +57,8 @@ export const api = {
     req('POST', `/sessions/${sessionId}/reopen`, { sku, operator_id: operatorId }),
   resetItem: (sessionId, sku, operatorId) =>
     req('POST', `/sessions/${sessionId}/reset-item`, { sku, operator_id: operatorId }),
+  forceCompleteItem: (sessionId, sku, operatorId) =>
+    req('POST', `/sessions/${sessionId}/force-complete`, { sku, operator_id: operatorId }),
   resetAllItems: (sessionId, operatorId) =>
     req('POST', `/sessions/${sessionId}/reset-all-items`, { operator_id: operatorId }),
   addBarcode: (sessionId, barcode, sku, operatorId) =>
