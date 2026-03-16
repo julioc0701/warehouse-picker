@@ -398,7 +398,7 @@ export default function Picking() {
    *   Se o agente estiver desligado, fetch() lança TypeError normalmente.
    * - Proteção contra dupla impressão via item.labels_printed.
    */
-  async function autoPrintLabels(pickedItem, force = false) {
+  async function autoPrintLabels(pickedItem, force = false, overrideQty = null) {
     if (!force && pickedItem.labels_printed) {
       setPrintStatus('done')
       return
@@ -410,7 +410,7 @@ export default function Picking() {
     const mlCode = pickedItem.ml_code || pickedItem.sku
     const desc = pickedItem.description
     const sku = pickedItem.sku
-    const qty = pickedItem.qty_picked || 1
+    const qty = overrideQty !== null ? overrideQty : (pickedItem.qty_picked || 1)
     const fullPairs = Math.floor(qty / 2)
     const remainder = qty % 2
 
@@ -466,8 +466,13 @@ export default function Picking() {
     focusInput()
   }
 
-  async function handleForcePrint() {
-    if (item) await autoPrintLabels(item, true)
+  function handleForcePrint() {
+    if (item) setDialog({ type: 'reprint_qty', data: { qty: item.qty_required } })
+  }
+
+  async function handleReprintConfirm(qty) {
+    setDialog(null)
+    if (item && qty > 0) await autoPrintLabels(item, true, qty)
     focusInput()
   }
 
@@ -873,6 +878,15 @@ export default function Picking() {
         />
       )}
 
+      {dialog?.type === 'reprint_qty' && item && (
+        <ReprintQtyDialog
+          item={item}
+          defaultQty={dialog.data.qty}
+          onConfirm={handleReprintConfirm}
+          onCancel={() => { setDialog(null); focusInput() }}
+        />
+      )}
+
       {dialog?.type === 'wrong_sku' && (
         <WrongSkuDialog
           scannedItem={dialog.data.item}
@@ -901,6 +915,58 @@ export default function Picking() {
           onCancel={() => { setDialog(null); focusInput() }}
         />
       )}
+    </div>
+  )
+}
+
+function ReprintQtyDialog({ item, defaultQty, onConfirm, onCancel }) {
+  const [qty, setQty] = useState(defaultQty || item.qty_required)
+
+  function handleConfirm() {
+    const n = Math.max(1, Number(qty) || 1)
+    onConfirm(n)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full flex flex-col gap-6">
+        <h2 className="text-2xl font-bold text-center">Reimprimir Etiquetas</h2>
+        <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-4 text-center">
+          <p className="font-mono font-bold text-xl">{item.sku}</p>
+          <p className="text-gray-400 text-xs mt-2">Necessário: {item.qty_required} unidades</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
+            Quantas etiquetas imprimir?
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={qty}
+            onChange={e => setQty(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleConfirm()
+            }}
+            onFocus={e => e.target.select()}
+            autoFocus
+            className="text-center text-4xl font-bold border-2 border-gray-300 focus:border-blue-500 rounded-xl py-4 outline-none"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={onCancel}
+            className="py-4 rounded-xl border-2 border-gray-300 text-lg font-medium hover:bg-gray-100"
+          >
+            CANCELAR
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="py-4 rounded-xl bg-green-600 text-white text-lg font-bold hover:bg-green-700"
+          >
+            IMPRIMIR
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
