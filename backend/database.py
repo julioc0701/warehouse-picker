@@ -112,3 +112,34 @@ def init_db():
         if "labels_printed" not in picking_cols:
             conn.execute(text("ALTER TABLE picking_items ADD COLUMN labels_printed BOOLEAN NOT NULL DEFAULT 0"))
             conn.commit()
+
+        # Fix UNIQUE constraint on barcode since SQLite doesn't support DROP CONSTRAINT directly
+        tbl_sql = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='barcodes'")).scalar()
+        idx_sql = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='barcodes' AND sql LIKE '%UNIQUE%'")).scalar()
+        
+        needs_migration = False
+        if tbl_sql and "UNIQUE (barcode)" in tbl_sql:
+            needs_migration = True
+        if idx_sql:
+            needs_migration = True
+            
+        if needs_migration:
+            print("--- DATABASE MIGRATION: Removing UNIQUE constraint from barcodes ---")
+            conn.execute(text("""
+            CREATE TABLE barcodes_tmp (
+                id INTEGER NOT NULL PRIMARY KEY,
+                barcode VARCHAR(200) NOT NULL,
+                sku VARCHAR(100) NOT NULL,
+                description VARCHAR(500),
+                is_primary BOOLEAN NOT NULL,
+                added_by INTEGER,
+                added_at DATETIME NOT NULL,
+                FOREIGN KEY(added_by) REFERENCES operators (id)
+            )
+            """))
+            conn.execute(text("INSERT INTO barcodes_tmp SELECT id, barcode, sku, description, is_primary, added_by, added_at FROM barcodes"))
+            conn.execute(text("DROP TABLE barcodes"))
+            conn.execute(text("ALTER TABLE barcodes_tmp RENAME TO barcodes"))
+            conn.commit()
+            print("--- DATABASE MIGRATION: UNIQUE constraint removed successfully ---")
+
