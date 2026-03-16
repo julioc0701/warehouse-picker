@@ -554,15 +554,37 @@ function SessionRow({ s, onDeleted }) {
                 <tr className="text-gray-400 text-left border-b border-gray-200">
                   <th className="pb-2 font-medium">SKU</th>
                   <th className="pb-2 font-medium">Qtd</th>
+                  <th className="pb-2 font-medium w-1/4">Obs</th>
                   <th className="pb-2 font-medium">Status</th>
                   <th className="pb-2 font-medium text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map(item => (
-                  <tr key={item.id} className="border-b border-gray-100 last:border-0">
+                  <tr key={item.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-100/50 transition-colors">
                     <td className="py-2 font-mono">{item.sku}</td>
                     <td className="py-2">{item.qty_picked}/{item.qty_required}</td>
+                    <td className="py-2">
+                      <div 
+                        onClick={async (e) => {
+                          e.stopPropagation() // Prevent row click issues
+                          const currentNote = item.notes || ''
+                          const newNotes = window.prompt(`Editar observação para ${item.sku}:`, currentNote)
+                          if (newNotes === null) return
+                          try {
+                            await api.updateItemNotes(item.id, newNotes.trim() || null)
+                            setItems(prev => prev.map(i => i.id === item.id ? { ...i, notes: newNotes.trim() || null } : i))
+                          } catch (e) {
+                            alert('Erro ao atualizar: ' + e.message)
+                          }
+                        }}
+                        className="truncate max-w-[220px] cursor-pointer text-blue-600 hover:text-blue-800 italic hover:bg-blue-50 p-1 rounded transition-colors group"
+                        title={item.notes || 'Clique para adicionar observação'}
+                      >
+                        <span className="mr-1 opacity-0 group-hover:opacity-100 transition-opacity">✏️</span>
+                        {item.notes || <span className="text-gray-300">clique para add</span>}
+                      </div>
+                    </td>
                     <td className="py-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         item.status === 'complete' ? 'bg-green-100 text-green-700' :

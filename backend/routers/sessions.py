@@ -373,24 +373,49 @@ def shortage_report(db: DBSession = Depends(get_db)):
     """
     from sqlalchemy import func
 
-    rows = (
+    raw_rows = (
         db.query(
             PickingItem.sku,
             PickingItem.description,
-            func.sum(PickingItem.shortage_qty).label("total_shortage"),
+            PickingItem.shortage_qty,
+            PickingItem.notes,
         )
         .join(Session, Session.id == PickingItem.session_id)
         .filter(
             PickingItem.shortage_qty > 0,
         )
-        .group_by(PickingItem.sku, PickingItem.description)
-        .order_by(func.sum(PickingItem.shortage_qty).desc())
         .all()
     )
 
+    # Agrupa por (SKU, Descrição) no Python para evitar incompatibilidade de SQL (SQLite vs Postgres)
+    aggregated = {}
+    for r in raw_rows:
+        key = (r.sku, r.description or "")
+        if key not in aggregated:
+            aggregated[key] = {
+                "sku": r.sku,
+                "description": r.description,
+                "shortage_qty": 0,
+                "all_notes": set()
+            }
+        
+        aggregated[key]["shortage_qty"] += r.shortage_qty
+        if r.notes:
+            # Se a nota for uma string com vírgulas (de agregações anteriores ou múltipla entrada), 
+            # lidamos com ela como partes
+            for part in r.notes.split(","):
+                p = part.strip()
+                if p:
+                    aggregated[key]["all_notes"].add(p)
+
     return [
-        {"sku": r.sku, "description": r.description, "shortage_qty": r.total_shortage}
-        for r in rows
+        {
+            "sku": v["sku"],
+            "description": v["description"],
+            "shortage_qty": v["shortage_qty"],
+            "notes": ", ".join(sorted(list(v["all_notes"]))) if v["all_notes"] else None
+        }
+        for v in aggregated.values()
     ]
 
 
@@ -457,11 +482,12 @@ class ShortageBody(BaseModel):
     sku: str
     qty_found: int
     operator_id: int
+    notes: str | None = None
 
 
 @router.post("/{session_id}/shortage")
 def shortage(session_id: int, body: ShortageBody, db: DBSession = Depends(get_db)):
-    result = svc.mark_shortage(db, session_id, body.sku, body.qty_found, body.operator_id)
+    result = svc.mark_shortage(db, session_id, body.sku, body.qty_found, body.operator_id, body.notes)
     result["progress"] = svc.session_progress(db, session_id)
     return result
 
@@ -469,11 +495,12 @@ def shortage(session_id: int, body: ShortageBody, db: DBSession = Depends(get_db
 class OosBody(BaseModel):
     sku: str
     operator_id: int
+    notes: str | None = None
 
 
 @router.post("/{session_id}/out-of-stock")
 def out_of_stock(session_id: int, body: OosBody, db: DBSession = Depends(get_db)):
-    result = svc.mark_out_of_stock(db, session_id, body.sku, body.operator_id)
+    result = svc.mark_out_of_stock(db, session_id, body.sku, body.operator_id, body.notes)
     result["progress"] = svc.session_progress(db, session_id)
     return result
 
@@ -584,7 +611,21 @@ def transfer_item_api(body: TransferBody, db: DBSession = Depends(get_db)):
         raise HTTPException(500, "Erro interno ao processar transferência")
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+class UpdateNotesBody(BaseModel):
+    notes: str | None
+
+@router.patch("/items/{item_id}/notes")
+def update_item_notes(item_id: int, body: UpdateNotesBody, db: DBSession = Depends(get_db)):
+    return svc.update_item_notes(db, item_id, body.notes)
+
+
+class UpdateSkuNotesBody(BaseModel):
+    notes: str | None
+
+@router.patch("/shortage-report/{sku}/notes")
+def update_sku_notes_api(sku: str, body: UpdateSkuNotesBody, db: DBSession = Depends(get_db)):
+    return svc.update_sku_notes(db, sku, body.notes)
+
 
 def _session_or_404(db: DBSession, session_id: int) -> Session:
     s = db.query(Session).filter(Session.id == session_id).first()

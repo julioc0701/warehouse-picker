@@ -305,7 +305,7 @@ def undo_last_scan(db: DBSession, session_id: int, sku: str, operator_id: int) -
     return {"status": "ok", "item": _item_dict(item)}
 
 
-def mark_shortage(db: DBSession, session_id: int, sku: str, qty_found: int, operator_id: int) -> dict:
+def mark_shortage(db: DBSession, session_id: int, sku: str, qty_found: int, operator_id: int, notes: str | None = None) -> dict:
     item = _get_item(db, session_id, sku)
     if not item:
         return {"status": "not_found"}
@@ -313,6 +313,7 @@ def mark_shortage(db: DBSession, session_id: int, sku: str, qty_found: int, oper
     item.qty_picked = qty_found
     item.shortage_qty = item.qty_required - qty_found
     item.status = "partial"
+    item.notes = notes
     item.completed_at = datetime.utcnow()
 
     log_event(db, session_id, item.id, "SHORTAGE", operator_id, "shortage", qty_found)
@@ -323,7 +324,7 @@ def mark_shortage(db: DBSession, session_id: int, sku: str, qty_found: int, oper
     return {"status": "ok", "item": _item_dict(item)}
 
 
-def mark_out_of_stock(db: DBSession, session_id: int, sku: str, operator_id: int) -> dict:
+def mark_out_of_stock(db: DBSession, session_id: int, sku: str, operator_id: int, notes: str | None = None) -> dict:
     item = _get_item(db, session_id, sku)
     if not item:
         return {"status": "not_found"}
@@ -331,6 +332,7 @@ def mark_out_of_stock(db: DBSession, session_id: int, sku: str, operator_id: int
     # Preserve whatever was already scanned; mark the rest as out of stock
     item.shortage_qty = item.qty_required - item.qty_picked
     item.status = "partial" if item.qty_picked > 0 else "out_of_stock"
+    item.notes = notes
     item.completed_at = datetime.utcnow()
 
     log_event(db, session_id, item.id, "OOS", operator_id, "out_of_stock", 0)
@@ -387,6 +389,25 @@ def reset_item(db: DBSession, session_id: int, sku: str, operator_id: int) -> di
     log_event(db, session_id, item.id, "RESET", operator_id, "reset", 0)
     db.commit()
     return {"status": "ok", "item": _item_dict(item)}
+
+
+def update_item_notes(db: DBSession, item_id: int, notes: str | None) -> dict:
+    item = db.query(PickingItem).filter(PickingItem.id == item_id).first()
+    if not item:
+        return {"status": "not_found"}
+    item.notes = notes
+    db.commit()
+    return {"status": "ok", "item": _item_dict(item)}
+
+
+def update_sku_notes(db: DBSession, sku: str, notes: str | None) -> dict:
+    """Updates notes for all items with this SKU that have shortages."""
+    db.query(PickingItem).filter(
+        PickingItem.sku == sku,
+        PickingItem.shortage_qty > 0
+    ).update({"notes": notes}, synchronize_session=False)
+    db.commit()
+    return {"status": "ok", "sku": sku}
 
 
 def reset_all_items(db: DBSession, session_id: int, operator_id: int) -> dict:

@@ -262,9 +262,9 @@ export default function Picking() {
     focusInput()
   }
 
-  async function handleShortageConfirm(qtyFound) {
+  async function handleShortageConfirm(qtyFound, notes) {
     setDialog(null)
-    const res = await api.shortage(sessionId, item.sku, qtyFound, operator.id)
+    const res = await api.shortage(sessionId, item.sku, qtyFound, operator.id, notes)
     setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
     if (focusSku) {
       goBackToItems()
@@ -280,15 +280,15 @@ export default function Picking() {
 
   async function handleOutOfStock() {
     if (item.qty_picked > 0) {
-      setDialog({ type: 'oos_confirm' })
+      setDialog({ type: 'oos_confirm', data: { notes: '' } })
       return
     }
-    await _doOutOfStock()
+    setDialog({ type: 'oos_confirm', data: { notes: '' } })
   }
 
-  async function _doOutOfStock() {
+  async function _doOutOfStock(notes) {
     setDialog(null)
-    const res = await api.outOfStock(sessionId, item.sku, operator.id)
+    const res = await api.outOfStock(sessionId, item.sku, operator.id, notes)
     setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
     if (focusSku) {
       goBackToItems()
@@ -761,15 +761,34 @@ export default function Picking() {
 
       {/* Dialogs */}
       {dialog?.type === 'oos_confirm' && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full flex flex-col gap-6">
-            <h2 className="text-2xl font-bold text-center">Confirmar Sem Estoque</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6 shadow-2xl">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full flex flex-col gap-6 overflow-y-auto max-h-[90vh]">
+            <h2 className="text-2xl font-bold text-center text-red-600">⚠ Confirmar Sem Estoque</h2>
             <div className="bg-gray-50 rounded-xl p-4 text-center">
-              <p className="text-lg text-green-700 font-semibold">✓ {item.qty_picked} lidos serão mantidos</p>
-              <p className="text-lg text-red-600 font-semibold mt-1">
-                ✗ {item.qty_required - item.qty_picked} marcados como sem estoque
-              </p>
+              {item.qty_picked > 0 ? (
+                <>
+                  <p className="text-lg text-green-700 font-semibold">✓ {item.qty_picked} lidos serão mantidos</p>
+                  <p className="text-lg text-red-600 font-semibold mt-1">
+                    ✗ {item.qty_required - item.qty_picked} marcados como sem estoque
+                  </p>
+                </>
+              ) : (
+                <p className="text-lg text-red-600 font-semibold">
+                  Todas as {item.qty_required} unidades marcadas como sem estoque
+                </p>
+              )}
             </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-600 mb-1">Observação (Opcional)</label>
+              <textarea
+                value={dialog.data.notes}
+                onChange={e => setDialog({ ...dialog, data: { ...dialog.data, notes: e.target.value } })}
+                placeholder="Ex: Faltou apenas o reparo do kit..."
+                className="w-full text-sm border-2 border-gray-200 rounded-xl p-3 focus:outline-none focus:border-red-400 min-h-[80px]"
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => { setDialog(null); focusInput() }}
@@ -778,7 +797,7 @@ export default function Picking() {
                 CANCELAR
               </button>
               <button
-                onClick={_doOutOfStock}
+                onClick={() => _doOutOfStock(dialog.data.notes)}
                 className="py-4 rounded-xl bg-red-500 text-white text-lg font-bold hover:bg-red-600"
               >
                 CONFIRMAR

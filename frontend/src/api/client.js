@@ -39,6 +39,8 @@ export const api = {
     req('GET', `/sessions/find-by-barcode?barcode=${encodeURIComponent(barcode)}&operator_id=${operatorId}`),
   getShortageReport: () => req('GET', '/sessions/shortage-report'),
   transferItem: (itemId, operatorId) => req('POST', '/sessions/transfer', { item_id: itemId, operator_id: operatorId }),
+  updateItemNotes: (itemId, notes) => req('PATCH', `/sessions/items/${itemId}/notes`, { notes }),
+  updateShortageNotes: (sku, notes) => req('PATCH', `/sessions/shortage-report/${encodeURIComponent(sku)}/notes`, { notes }),
 
   // Picking actions
   scan: (sessionId, barcode, operatorId, focusSku = null) =>
@@ -47,10 +49,10 @@ export const api = {
     req('POST', `/sessions/${sessionId}/scan-box`, { barcode, operator_id: operatorId, focus_sku: focusSku }),
   undo: (sessionId, sku, operatorId) =>
     req('POST', `/sessions/${sessionId}/undo`, { sku, operator_id: operatorId }),
-  shortage: (sessionId, sku, qtyFound, operatorId) =>
-    req('POST', `/sessions/${sessionId}/shortage`, { sku, qty_found: qtyFound, operator_id: operatorId }),
-  outOfStock: (sessionId, sku, operatorId) =>
-    req('POST', `/sessions/${sessionId}/out-of-stock`, { sku, operator_id: operatorId }),
+  shortage: (sessionId, sku, qtyFound, operatorId, notes = null) =>
+    req('POST', `/sessions/${sessionId}/shortage`, { sku, qty_found: qtyFound, operator_id: operatorId, notes }),
+  outOfStock: (sessionId, sku, operatorId, notes = null) =>
+    req('POST', `/sessions/${sessionId}/out-of-stock`, { sku, operator_id: operatorId, notes }),
   reopen: (sessionId, sku, operatorId) =>
     req('POST', `/sessions/${sessionId}/reopen`, { sku, operator_id: operatorId }),
   resetItem: (sessionId, sku, operatorId) =>

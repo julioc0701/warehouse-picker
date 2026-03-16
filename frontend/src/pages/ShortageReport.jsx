@@ -60,6 +60,7 @@ export default function ShortageReport() {
                   <tr className="border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     <th className="pb-3 pr-4">SKU</th>
                     <th className="pb-3 pr-4">Descrição</th>
+                    <th className="pb-3 pr-4">Observação</th>
                     <th className="pb-3 text-right text-red-500">Qtd Faltante</th>
                   </tr>
                 </thead>
@@ -69,8 +70,27 @@ export default function ShortageReport() {
                       <td className="py-3 pr-4 font-mono font-semibold whitespace-nowrap">
                         {item.sku}
                       </td>
-                      <td className="py-3 pr-4 text-gray-600">
+                      <td className="py-3 pr-4 text-gray-700">
                         {item.description || '—'}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div
+                          onClick={async () => {
+                            const newNotes = window.prompt(`Adicionar/Editar observação para ${item.sku}:`, item.notes || '')
+                            if (newNotes === null) return
+                            try {
+                              await api.updateShortageNotes(item.sku, newNotes.trim() || null)
+                              setItems(prev => prev.map(i => i.sku === item.sku ? { ...i, notes: newNotes.trim() || null } : i))
+                            } catch (e) {
+                              alert('Erro ao atualizar: ' + e.message)
+                            }
+                          }}
+                          className="truncate max-w-[250px] cursor-pointer text-blue-600 hover:text-blue-800 italic group hover:bg-blue-50 p-1 rounded transition-colors"
+                          title={item.notes || 'Clique para adicionar observação'}
+                        >
+                          <span className="mr-1 opacity-0 group-hover:opacity-100 transition-opacity">✏️</span>
+                          {item.notes || <span className="text-gray-300">clique para add</span>}
+                        </div>
                       </td>
                       <td className="py-3 text-right">
                         <span className="font-bold text-red-600 text-base">
