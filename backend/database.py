@@ -1,4 +1,5 @@
 import os
+import sqlite3
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -7,32 +8,56 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./warehouse_v2.db")
 print(f"--- DATABASE DEBUG: URL is '{DATABASE_URL}' ---")
 
-# Robust automated migration (Seed)
+# ── Production Data Safety: Seed only if there's NO real data ─────────────────
 if "/data/" in DATABASE_URL:
     if DATABASE_URL.startswith("sqlite:////"):
         db_path = DATABASE_URL.replace("sqlite:////", "/")
     else:
         db_path = DATABASE_URL.replace("sqlite:///", "")
-    
+
     db_path = os.path.abspath(db_path)
     print(f"--- DATABASE DEBUG: Final target path is '{db_path}' ---")
-    
-    # Check if target exists and its size
+
+    raw_force_seed = str(os.getenv("FORCE_SEED", "false")).strip().lower()
+    force_seed = raw_force_seed in ("true", "1", "yes")
+    print(f"--- DATABASE DEBUG: FORCE_SEED={force_seed} ---")
+
+    # ── CRITICAL: Detect if production DB already has real operational data ───
+    # We query the DB directly. If barcodes OR sessions exist, data is LIVE.
+    # Only seed (overwrite) if DB is truly empty or FORCE_SEED is explicitly set.
+    has_real_data = False
     if os.path.exists(db_path):
         size = os.path.getsize(db_path)
         print(f"--- DATABASE DEBUG: Target file exists. Size: {size} bytes ---")
+        if size > 10000:  # File exists and is non-trivial in size
+            try:
+                conn_check = sqlite3.connect(db_path)
+                cur = conn_check.cursor()
+                # Check for operational data
+                cur.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='barcodes'")
+                has_barcodes_table = cur.fetchone()[0] > 0
+                if has_barcodes_table:
+                    barcode_count = cur.execute("SELECT COUNT(*) FROM barcodes").fetchone()[0]
+                    session_count = cur.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+                    has_real_data = barcode_count > 0 or session_count > 0
+                    print(f"--- DATABASE DEBUG: Found {barcode_count} barcodes, {session_count} sessions ---")
+                conn_check.close()
+            except Exception as e:
+                print(f"--- DATABASE DEBUG: Could not inspect existing DB: {e} ---")
     else:
-        print("--- DATABASE DEBUG: Target file does NOT exist. ---")
+        print("--- DATABASE DEBUG: Target file does NOT exist. Will seed. ---")
 
-    raw_force_seed = str(os.getenv("FORCE_SEED", "false")).strip().lower()
-    print(f"--- DATABASE DEBUG: Raw FORCE_SEED value is '{raw_force_seed}' ---")
-    force_seed = raw_force_seed in ("true", "1", "yes")
-    
-    # Nuclear option: if the file is smaller than our known good local DB, it's probably wrong
-    # Local is ~110KB. If it's <50KB, it's definitely not the right data.
-    is_too_small = os.path.exists(db_path) and os.path.getsize(db_path) < 50000
-    
-    if not os.path.exists(db_path) or force_seed or is_too_small:
+    should_seed = not os.path.exists(db_path) or (force_seed and not has_real_data) or force_seed == "force_override"
+
+    # ── SAFETY GATE: Never overwrite if real data exists (unless FORCE_SEED=true) ──
+    if has_real_data and not force_seed:
+        print(f"--- DATABASE SAFETY: Production data detected. Skipping seed to protect data. ---")
+        should_seed = False
+    elif has_real_data and force_seed:
+        print(f"--- DATABASE WARNING: FORCE_SEED=true with LIVE DATA. Proceeding with overwrite. ---")
+        should_seed = True
+
+    if should_seed:
         import shutil
         current_dir = os.path.dirname(__file__)
         seed_path = os.path.abspath(os.path.join(current_dir, "warehouse_v2.db"))
