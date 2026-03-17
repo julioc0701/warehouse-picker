@@ -116,26 +116,24 @@ def process_scan(
     else:
         item = items[0]
 
-    sku = item.sku.upper()
-    current = get_current_item(db, session_id)
-
-    # Scanned a different SKU than what's expected.
-    # Skip this check in focus mode: if the operator explicitly chose to scan
-    # this SKU (focus_sku), allow it even if it's not the first pending item.
-    in_focus_mode = (focus_sku is not None and focus_sku.strip().upper() == sku)
-    if current and current.sku.upper() != sku and not in_focus_mode:
-        return {
-            "status": "wrong_sku",
-            "scanned_sku": sku,
-            "expected_sku": current.sku,
-            "item": _item_dict(item),
-        }
-
-    # Already at required quantity
-    if item.qty_picked >= item.qty_required:
-        return {"status": "excess", "item": _item_dict(item)}
-
     # Valid scan — increment ATOMICALLY to prevent race conditions
+    
+    # ── REGRA DE OURO: QUEM EXECUTA É O DONO ────────────────────────────────────
+    # Se o operador atual não é o dono da sessão (e a sessão já está em andamento/outra pessoa),
+    # forçamos a transferência para que o item mude de lista.
+    # Exceção: se a sessão estiver 'open' (sem operador ainda), o primeiro scan faz o claim normal.
+    sess = db.query(Session).filter(Session.id == session_id).first()
+    if sess and sess.operator_id and sess.operator_id != operator_id:
+        return {
+            "status": "wrong_session",
+            "action": "transfer_available",
+            "item_id": item.id,
+            "sku": item.sku,
+            "owner_name": sess.operator.name if sess.operator else "Outro",
+            "barcode": barcode
+        }
+    # ────────────────────────────────────────────────────────────────────────────
+
     from sqlalchemy import update
     stmt = (
         update(PickingItem)
@@ -261,6 +259,19 @@ def process_scan_box(
     delta = item.qty_required - item.qty_picked
     if delta <= 0:
         return {"status": "excess", "item": _item_dict(item)}
+
+    # ── REGRA DE OURO: QUEM EXECUTA É O DONO ────────────────────────────────────
+    sess = db.query(Session).filter(Session.id == session_id).first()
+    if sess and sess.operator_id and sess.operator_id != operator_id:
+        return {
+            "status": "wrong_session",
+            "action": "transfer_available",
+            "item_id": item.id,
+            "sku": item.sku,
+            "owner_name": sess.operator.name if sess.operator else "Outro",
+            "barcode": barcode
+        }
+    # ────────────────────────────────────────────────────────────────────────────
 
     from sqlalchemy import update
     stmt = (

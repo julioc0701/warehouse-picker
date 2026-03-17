@@ -103,10 +103,28 @@ export default function SessionSelect() {
     }
   }
 
-  function onSelectSearchResult(candidate) {
+  async function onSelectSearchResult(candidate) {
     setSearchResult(null)
-    // Se for 'open' ou similar, o backend findByBarcode já nos diria a ação exata se bipado novamente.
-    // Mas aqui na busca geral, vamos direto pro picking do item selecionado.
+    
+    // REGRA DE NEGÓCIO: Se o SKU pertence a outra lista/operador, transferir AUTOMATICAMENTE
+    // Isso garante que "Quem executa o SKU é o dono da lista"
+    const isOtherOperator = candidate.operator_name && candidate.operator_name !== operator.name && candidate.operator_name !== 'Disponível'
+    
+    if (isOtherOperator) {
+      setSearching(true)
+      try {
+        const res = await api.transferItem(candidate.item_id, operator.id)
+        // Navega para a NOVA sessão criada pela transferência
+        navigate(`/picking/${res.new_session_id}?sku=${encodeURIComponent(candidate.sku)}`)
+      } catch (err) {
+        alert("Erro na transferência automática: " + err.message)
+      } finally {
+        setSearching(false)
+      }
+      return
+    }
+
+    // Se for da própria lista ou estiver disponível (sem operador), segue o fluxo normal
     navigate(`/picking/${candidate.session_id}?sku=${encodeURIComponent(candidate.sku)}`)
   }
 
