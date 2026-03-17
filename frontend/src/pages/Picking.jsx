@@ -126,19 +126,16 @@ export default function Picking() {
     Promise.all([
       api.getSession(sessionId),
       api.getPrinters(),
-    ]).then(([s, p]) => {
+      api.getItems(sessionId)
+    ]).then(([s, p, its]) => {
       setSession(s)
       setPrinters(p)
+      setAllItems(its)
       if (p.length > 0) setSelectedPrinter(p[0].id)
       if (focusSku) {
-        api.getItems(sessionId).then(items => {
-          const focused = items.find(i => i.sku === focusSku)
-          setItem(focused || null)
-          if (!focused) api.getItems(sessionId).then(setAllItems)
-        })
+        setItem(its.find(i => i.sku === focusSku) || null)
       } else {
         setItem(s.current_item)
-        if (!s.current_item) api.getItems(sessionId).then(setAllItems)
       }
     }).finally(() => { setLoading(false); focusInput() })
   }, [sessionId, focusSku])
@@ -147,10 +144,8 @@ export default function Picking() {
     api.getSession(sessionId).then(s => {
       setSession(s)
       setItem(s.current_item)
-      if (!s.current_item) {
-        api.getItems(sessionId).then(setAllItems)
-      }
     })
+    api.getItems(sessionId).then(setAllItems)
   }
 
   function triggerFlash(type) {
