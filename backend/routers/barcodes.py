@@ -210,8 +210,9 @@ def list_barcodes(
     search: str = Query(default="", description="Filtrar por SKU ou código de barras"),
     limit: int = Query(default=200, le=2000),
 ):
-    # Exclude SKU-alias entries (barcode == sku) from the barcode list display
-    base = Barcode.barcode != Barcode.sku
+    # Show all barcodes — including those where barcode == sku (learned ones)
+    from sqlalchemy import true
+    base = true()
 
     if search:
         like = f"%{search}%"
