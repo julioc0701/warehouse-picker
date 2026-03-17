@@ -525,6 +525,25 @@ export default function Picking() {
     }
   }
 
+  function handleShowPending() {
+    const pending = allItems.filter(i => i.status === 'pending');
+    if (pending.length === 0) {
+      triggerFlash('error');
+      return;
+    }
+    setDialog({
+      type: 'multiple_matches',
+      data: {
+        candidates: pending.map(i => ({
+          ...i,
+          session_id: session.id,
+          session_code: session.session_code,
+          operator_name: operator?.name || 'Sistema'
+        }))
+      }
+    });
+  }
+
   async function onSelectSearchResult(candidate) {
     setDialog(null)
     const isInSession = allItems.some(i => i.sku === candidate.sku)
@@ -643,15 +662,26 @@ export default function Picking() {
             <p className="text-center text-gray-400 text-lg mb-3 uppercase tracking-wide">
               Escaneie o código de barras ou digite o SKU
             </p>
-            <input
-              ref={inputRef}
-              className="scan-input"
-              placeholder="Digite o SKU ou bipe aqui..."
-              value={barcode}
-              onChange={e => setBarcode(e.target.value)}
-              onKeyDown={handleScan}
-              autoFocus
-            />
+            <div className="flex gap-2">
+              <input
+                ref={inputRef}
+                className="scan-input flex-1"
+                placeholder="Digite o SKU ou bipe aqui..."
+                value={barcode}
+                onChange={e => setBarcode(e.target.value)}
+                onKeyDown={handleScan}
+                autoFocus
+              />
+              <button
+                onMouseDown={e => e.preventDefault()}
+                onClick={handleShowPending}
+                title="Lista de SKUs Pendentes"
+                className="px-6 bg-gray-50 hover:bg-orange-50 border-2 border-gray-200 hover:border-orange-300 rounded-xl text-orange-600 font-bold transition-all flex flex-col items-center justify-center gap-1 group whitespace-nowrap"
+              >
+                <span className="text-2xl group-hover:scale-110 transition-transform">⏳</span>
+                <span className="text-[10px] uppercase tracking-tighter">SKU Pendente</span>
+              </button>
+            </div>
           </div>
         )}
 
