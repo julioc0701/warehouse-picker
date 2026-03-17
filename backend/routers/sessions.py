@@ -419,6 +419,36 @@ def shortage_report(db: DBSession = Depends(get_db)):
     ]
 
 
+@router.get("/all-pending")
+def get_all_pending(db: DBSession = Depends(get_db)):
+    """
+    Returns all items with 'pending' status from all active (non-completed) sessions.
+    Used for the cross-session pending items list.
+    """
+    rows = (
+        db.query(PickingItem, Session, Operator.name.label("operator_name"))
+        .join(Session, Session.id == PickingItem.session_id)
+        .outerjoin(Operator, Operator.id == Session.operator_id)
+        .filter(Session.status != "completed")
+        .filter(PickingItem.status == "pending")
+        .order_by(PickingItem.sku)
+        .all()
+    )
+    return [
+        {
+            "item_id": r[0].id,
+            "sku": r[0].sku,
+            "description": r[0].description,
+            "session_id": r[1].id,
+            "session_code": r[1].session_code,
+            "operator_name": r[2] or "Disponível",
+            "qty_picked": r[0].qty_picked,
+            "qty_required": r[0].qty_required,
+            "status": r[0].status
+        } for r in rows
+    ]
+
+
 @router.get("/{session_id}")
 def get_session(session_id: int, db: DBSession = Depends(get_db)):
     s = _session_or_404(db, session_id)

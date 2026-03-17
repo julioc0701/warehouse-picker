@@ -38,6 +38,7 @@ export const api = {
   findByBarcode: (barcode, operatorId) =>
     req('GET', `/sessions/find-by-barcode?barcode=${encodeURIComponent(barcode)}&operator_id=${operatorId}`),
   getShortageReport: () => req('GET', '/sessions/shortage-report'),
+  getAllPendingItems: () => req('GET', '/sessions/all-pending'),
   transferItem: (itemId, operatorId) => req('POST', '/sessions/transfer', { item_id: itemId, operator_id: operatorId }),
   updateItemNotes: (itemId, notes) => req('PATCH', `/sessions/items/${itemId}/notes`, { notes }),
   updateShortageNotes: (sku, notes) => req('PATCH', `/sessions/shortage-report/${encodeURIComponent(sku)}/notes`, { notes }),

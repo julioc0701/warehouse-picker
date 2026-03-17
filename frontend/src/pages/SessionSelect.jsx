@@ -87,6 +87,22 @@ export default function SessionSelect() {
     }
   }
 
+  async function handleShowAllPending() {
+    setSearching(true)
+    try {
+      const candidates = await api.getAllPendingItems()
+      if (candidates.length === 0) {
+        alert('Nenhum SKU pendente em nenhuma lista ativa.')
+      } else {
+        setSearchResult({ action: 'multiple_matches', candidates })
+      }
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setSearching(false)
+    }
+  }
+
   function onSelectSearchResult(candidate) {
     setSearchResult(null)
     // Se for 'open' ou similar, o backend findByBarcode já nos diria a ação exata se bipado novamente.
@@ -107,7 +123,7 @@ export default function SessionSelect() {
       </div>
 
       {/* Barcode search */}
-      <div className="mb-8">
+      <div className="mb-8 flex gap-3">
         <input
           ref={searchRef}
           type="text"
@@ -115,11 +131,20 @@ export default function SessionSelect() {
           onChange={e => setSearchBarcode(e.target.value)}
           onKeyDown={handleBarcodeSearch}
           placeholder="Buscar por código de barras, SKU ou descrição..."
-          className="w-full border-2 border-gray-300 focus:border-blue-500 rounded-2xl px-5 py-4 text-xl outline-none transition-colors"
+          className="flex-1 border-2 border-gray-300 focus:border-blue-500 rounded-2xl px-5 py-4 text-xl outline-none transition-colors"
           disabled={searching}
         />
+        <button
+          onClick={handleShowAllPending}
+          disabled={searching}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold px-6 rounded-2xl flex flex-col items-center justify-center gap-1 transition-colors min-w-[120px]"
+        >
+          <span className="text-2xl">⏳</span>
+          <span className="text-[10px] uppercase tracking-tighter">SKU PENDENTE</span>
+        </button>
+      </div>
 
-        {/* Result card */}
+      {/* Result card */}
         {searchResult && searchResult.action !== 'multiple_matches' && (
           <div className={`mt-3 rounded-2xl px-5 py-4 text-base font-medium ${
             searchResult.action === 'already_done'
@@ -183,7 +208,6 @@ export default function SessionSelect() {
             onCancel={() => setSearchResult(null)}
           />
         )}
-      </div>
 
       {loading && <p className="text-center text-gray-400 text-xl mt-16">Carregando...</p>}
 

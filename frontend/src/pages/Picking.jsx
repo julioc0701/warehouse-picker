@@ -126,16 +126,19 @@ export default function Picking() {
     Promise.all([
       api.getSession(sessionId),
       api.getPrinters(),
-      api.getItems(sessionId)
-    ]).then(([s, p, its]) => {
+    ]).then(([s, p]) => {
       setSession(s)
       setPrinters(p)
-      setAllItems(its)
       if (p.length > 0) setSelectedPrinter(p[0].id)
       if (focusSku) {
-        setItem(its.find(i => i.sku === focusSku) || null)
+        api.getItems(sessionId).then(items => {
+          const focused = items.find(i => i.sku === focusSku)
+          setItem(focused || null)
+          if (!focused) api.getItems(sessionId).then(setAllItems)
+        })
       } else {
         setItem(s.current_item)
+        if (!s.current_item) api.getItems(sessionId).then(setAllItems)
       }
     }).finally(() => { setLoading(false); focusInput() })
   }, [sessionId, focusSku])
@@ -144,8 +147,10 @@ export default function Picking() {
     api.getSession(sessionId).then(s => {
       setSession(s)
       setItem(s.current_item)
+      if (!s.current_item) {
+        api.getItems(sessionId).then(setAllItems)
+      }
     })
-    api.getItems(sessionId).then(setAllItems)
   }
 
   function triggerFlash(type) {
@@ -520,25 +525,6 @@ export default function Picking() {
     }
   }
 
-  function handleShowPending() {
-    const pending = allItems.filter(i => i.status === 'pending');
-    if (pending.length === 0) {
-      triggerFlash('error');
-      return;
-    }
-    setDialog({
-      type: 'multiple_matches',
-      data: {
-        candidates: pending.map(i => ({
-          ...i,
-          session_id: session.id,
-          session_code: session.session_code,
-          operator_name: operator?.name || 'Sistema'
-        }))
-      }
-    });
-  }
-
   async function onSelectSearchResult(candidate) {
     setDialog(null)
     const isInSession = allItems.some(i => i.sku === candidate.sku)
@@ -613,11 +599,12 @@ export default function Picking() {
 
       <div className="flex-1 p-6 max-w-2xl mx-auto w-full flex flex-col gap-6">
 
-        {/* Scan input (Sempre visível para permitir busca/bipagem) */}
-        <div className="bg-white rounded-2xl shadow p-6">
-          {item && (
-            /* Scan mode selector - Só aparece quando tem item ativo */
-            <div className="mb-6">
+        {/* Scan input */}
+        {item && (
+          <div className="bg-white rounded-2xl shadow p-6">
+
+            {/* Scan mode selector */}
+            <div className="mb-4">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Modo de bipagem</p>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -652,33 +639,17 @@ export default function Picking() {
                 </div>
               )}
             </div>
-          )}
-
-          <p className="text-center text-gray-400 text-sm mb-3 uppercase tracking-wide">
-            Escaneie o código de barras ou SKU
-          </p>
-          
-          <div className="flex flex-col gap-3">
             <input
               ref={inputRef}
               className="scan-input"
-              placeholder="Aguardando bipagem..."
+              placeholder="Digite o SKU ou bipe aqui..."
               value={barcode}
               onChange={e => setBarcode(e.target.value)}
               onKeyDown={handleScan}
               autoFocus
             />
-            
-            <button
-              onMouseDown={e => e.preventDefault()}
-              onClick={handleShowPending}
-              className="w-full py-3 bg-gray-50 hover:bg-orange-50 border-2 border-gray-200 hover:border-orange-300 rounded-2xl text-orange-600 font-bold transition-all flex items-center justify-center gap-3 group"
-            >
-              <span className="text-2xl group-hover:rotate-12 transition-transform">⏳</span>
-              <span className="text-lg uppercase tracking-tight">Verificar SKUs Pendentes</span>
-            </button>
           </div>
-        </div>
+        )}
 
         {/* Current item */}
         {item ? (

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import SearchSelectionDialog from '../components/dialogs/SearchSelectionDialog'
 
 const STATUS_COLOR = {
   pending: 'text-gray-400',
@@ -34,7 +33,6 @@ export default function SessionItems() {
   const [loading, setLoading] = useState(true)
   const [confirmResetAll, setConfirmResetAll] = useState(false)
   const [resettingAll, setResettingAll] = useState(false)
-  const [showPending, setShowPending] = useState(false)
   const inputRef = useRef()
 
   useEffect(() => {
@@ -49,18 +47,7 @@ export default function SessionItems() {
   }
 
   function goToPicking(sku) {
-    setShowPending(false)
     navigate(`/picking/${sessionId}?sku=${encodeURIComponent(sku)}`)
-  }
-
-  function handleShowPending() {
-    const pending = items.filter(i => i.status === 'pending');
-    if (pending.length === 0) {
-      setErrMsg('Nenhum item pendente nesta lista');
-      setTimeout(() => setErrMsg(null), 3000);
-      return;
-    }
-    setShowPending(true);
   }
 
   async function handleScan(e) {
@@ -146,26 +133,15 @@ export default function SessionItems() {
           <p className="text-center text-gray-400 text-lg mb-3 uppercase tracking-wide">
             Bipe um produto para iniciar a separação
           </p>
-          <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              className="scan-input flex-1"
-              placeholder="▐ _ ▌"
-              value={barcode}
-              onChange={e => setBarcode(e.target.value)}
-              onKeyDown={handleScan}
-              autoFocus
-            />
-            <button
-              onMouseDown={e => e.preventDefault()}
-              onClick={handleShowPending}
-              title="Lista de SKUs Pendentes"
-              className="px-6 bg-gray-50 hover:bg-orange-50 border-2 border-gray-200 hover:border-orange-300 rounded-xl text-orange-600 font-bold transition-all flex flex-col items-center justify-center gap-1 group whitespace-nowrap"
-            >
-              <span className="text-2xl group-hover:scale-110 transition-transform">⏳</span>
-              <span className="text-[10px] uppercase tracking-tighter">SKU Pendente</span>
-            </button>
-          </div>
+          <input
+            ref={inputRef}
+            className="scan-input"
+            placeholder="▐ _ ▌"
+            value={barcode}
+            onChange={e => setBarcode(e.target.value)}
+            onKeyDown={handleScan}
+            autoFocus
+          />
           {errMsg && <p className="text-center text-red-500 mt-3 text-lg">{errMsg}</p>}
         </div>
 
@@ -238,19 +214,6 @@ export default function SessionItems() {
         </div>
 
       </div>
-
-      {showPending && (
-        <SearchSelectionDialog
-          candidates={items.filter(i => i.status === 'pending').map(i => ({
-            ...i,
-            session_id: session.id,
-            session_code: session.session_code,
-            operator_name: operator?.name || 'Sistema'
-          }))}
-          onSelect={(candidate) => goToPicking(candidate.sku)}
-          onCancel={() => setShowPending(false)}
-        />
-      )}
     </div>
   )
 }
