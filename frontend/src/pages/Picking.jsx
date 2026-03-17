@@ -613,12 +613,11 @@ export default function Picking() {
 
       <div className="flex-1 p-6 max-w-2xl mx-auto w-full flex flex-col gap-6">
 
-        {/* Scan input */}
-        {item && (
-          <div className="bg-white rounded-2xl shadow p-6">
-
-            {/* Scan mode selector */}
-            <div className="mb-4">
+        {/* Scan input (Sempre visível para permitir busca/bipagem) */}
+        <div className="bg-white rounded-2xl shadow p-6">
+          {item && (
+            /* Scan mode selector - Só aparece quando tem item ativo */
+            <div className="mb-6">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Modo de bipagem</p>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -653,32 +652,33 @@ export default function Picking() {
                 </div>
               )}
             </div>
+          )}
 
-            <p className="text-center text-gray-400 text-lg mb-3 uppercase tracking-wide">
-              Escaneie o código de barras ou digite o SKU
-            </p>
-            <div className="flex gap-2">
-              <input
-                ref={inputRef}
-                className="scan-input flex-1"
-                placeholder="Digite o SKU ou bipe aqui..."
-                value={barcode}
-                onChange={e => setBarcode(e.target.value)}
-                onKeyDown={handleScan}
-                autoFocus
-              />
-              <button
-                onMouseDown={e => e.preventDefault()}
-                onClick={handleShowPending}
-                title="Lista de SKUs Pendentes"
-                className="px-6 bg-gray-50 hover:bg-orange-50 border-2 border-gray-200 hover:border-orange-300 rounded-xl text-orange-600 font-bold transition-all flex flex-col items-center justify-center gap-1 group whitespace-nowrap"
-              >
-                <span className="text-2xl group-hover:scale-110 transition-transform">⏳</span>
-                <span className="text-[10px] uppercase tracking-tighter">SKU Pendente</span>
-              </button>
-            </div>
+          <p className="text-center text-gray-400 text-sm mb-3 uppercase tracking-wide">
+            Escaneie o código de barras ou SKU
+          </p>
+          
+          <div className="flex flex-col gap-3">
+            <input
+              ref={inputRef}
+              className="scan-input"
+              placeholder="Aguardando bipagem..."
+              value={barcode}
+              onChange={e => setBarcode(e.target.value)}
+              onKeyDown={handleScan}
+              autoFocus
+            />
+            
+            <button
+              onMouseDown={e => e.preventDefault()}
+              onClick={handleShowPending}
+              className="w-full py-3 bg-gray-50 hover:bg-orange-50 border-2 border-gray-200 hover:border-orange-300 rounded-2xl text-orange-600 font-bold transition-all flex items-center justify-center gap-3 group"
+            >
+              <span className="text-2xl group-hover:rotate-12 transition-transform">⏳</span>
+              <span className="text-lg uppercase tracking-tight">Verificar SKUs Pendentes</span>
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Current item */}
         {item ? (
