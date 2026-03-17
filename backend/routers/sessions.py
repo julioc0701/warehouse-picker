@@ -237,18 +237,20 @@ def find_by_barcode(
     if not sku:
         like_query = f"%{barcode}%"
         # Search for candidates in PickingItem directly
+        # Include ALL sessions (even completed) so EXT lists and finished items show up
         from sqlalchemy import case
         candidates_query = (
             db.query(PickingItem, Session, Operator.name.label("operator_name"))
             .join(Session, Session.id == PickingItem.session_id)
             .outerjoin(Operator, Operator.id == Session.operator_id)
-            .filter(Session.status != "completed")
             .filter(
                 (PickingItem.sku == barcode) | 
                 (PickingItem.sku.ilike(like_query)) | 
                 (PickingItem.description.ilike(like_query))
             )
             .order_by(
+                # Prioritize non-completed sessions first
+                case((Session.status != "completed", 0), else_=1).asc(),
                 case((PickingItem.sku == barcode, 1), else_=0).desc(),  # Exact SKU first
                 PickingItem.qty_required.desc()                         # Then by volume
             )
@@ -258,6 +260,15 @@ def find_by_barcode(
         
         if not matches:
              return {"action": "not_found", "barcode": barcode}
+
+        # Deduplicate by SKU: keep the first occurrence (preferred by ordering above)
+        seen_skus = set()
+        unique_matches = []
+        for m in matches:
+            if m[0].sku not in seen_skus:
+                seen_skus.add(m[0].sku)
+                unique_matches.append(m)
+        matches = unique_matches
 
         # If the top match is NOT an exact SKU, and there are multiple candidates, return list
         top_item, _, _ = matches[0]
