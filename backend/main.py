@@ -89,9 +89,37 @@ def force_seed_endpoint():
         return {"status": "error", "message": str(e)}
 
 
+@app.get("/api/admin/download-db")
+def download_db(secret: str = ""):
+    """Download the live production database. Protected by DOWNLOAD_SECRET env var."""
+    import os
+    from fastapi.responses import FileResponse
+    from database import DATABASE_URL
+
+    expected = os.getenv("DOWNLOAD_SECRET", "")
+    if not expected or secret != expected:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Unauthorized — set DOWNLOAD_SECRET env var and pass ?secret=")
+
+    if DATABASE_URL.startswith("sqlite:////"):
+        db_path = DATABASE_URL.replace("sqlite:////", "/")
+    else:
+        db_path = DATABASE_URL.replace("sqlite:///", "")
+
+    db_path = os.path.abspath(db_path)
+    if not os.path.exists(db_path):
+        return {"status": "error", "message": f"DB not found at {db_path}"}
+
+    return FileResponse(
+        db_path,
+        media_type="application/octet-stream",
+        filename="warehouse_v2_prod.db"
+    )
+
+
+
 # Serve React frontend (production build)
 # This must come AFTER all /api routes
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(_static_dir):
     app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
-
