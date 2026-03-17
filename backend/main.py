@@ -43,7 +43,7 @@ def on_startup():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "2.1-assertive"}
+    return {"status": "ok", "version": "2.2-pendente"}
 
 
 @app.get("/api/v2/sync")
