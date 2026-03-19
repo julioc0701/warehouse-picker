@@ -32,6 +32,8 @@ export const api = {
   getSession: (id) => req('GET', `/sessions/${id}`),
   getItems: (id) => req('GET', `/sessions/${id}/items`),
   uploadSession: (formData) => req('POST', '/sessions/upload', formData, true),
+  listBatches: () => req('GET', '/sessions/batches'),
+  archiveBatch: (batchId) => req('POST', `/sessions/batches/${batchId}/archive`),
   claimSession: (sessionId, operatorId) => req('POST', `/sessions/${sessionId}/claim`, { operator_id: operatorId }),
   deleteSession: (sessionId) => req('DELETE', `/sessions/${sessionId}`),
   reopenSession: (sessionId) => req('POST', `/sessions/${sessionId}/reopen-session`),
@@ -101,5 +103,6 @@ export const api = {
     req('DELETE', `/barcodes/${encodeURIComponent(sku)}/barcode/${encodeURIComponent(barcode)}`),
 
   // Stats
-  getOperatorRanking: () => req('GET', '/stats/ranking'),
+  getOperatorRanking: (batchId = null) => req('GET', `/stats/ranking${batchId ? `?batch_id=${batchId}` : ''}`),
+  getBatchesForRanking: () => req('GET', '/stats/batches-for-ranking'),
 }

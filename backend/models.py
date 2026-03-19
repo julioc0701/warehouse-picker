@@ -1,7 +1,21 @@
-from datetime import datetime
-from sqlalchemy import Integer, String, Text, Boolean, DateTime, ForeignKey
+from datetime import datetime, date
+from sqlalchemy import Integer, String, Text, Boolean, DateTime, Date, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
+
+
+class Batch(Base):
+    """Agrupa sessões de picking por data de carregamento do Full."""
+    __tablename__ = "batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    full_date: Mapped[date] = mapped_column(Date, nullable=False)   # data do carregamento
+    seq: Mapped[int] = mapped_column(Integer, default=1)            # 1, 2... se mesma data
+    name: Mapped[str] = mapped_column(String(100), nullable=False)  # ex: "19/03/2026"
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | archived
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    sessions: Mapped[list["Session"]] = relationship(back_populates="batch")
 
 
 class Operator(Base):
@@ -20,12 +34,14 @@ class Session(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id"))
+    batch_id: Mapped[int | None] = mapped_column(ForeignKey("batches.id"))  # NOVO
     status: Mapped[str] = mapped_column(String(20), default="open")
     # open | in_progress | completed
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     operator: Mapped["Operator | None"] = relationship(back_populates="sessions")
+    batch: Mapped["Batch | None"] = relationship(back_populates="sessions")  # NOVO
     items: Mapped[list["PickingItem"]] = relationship(back_populates="session", order_by="PickingItem.id")
     labels: Mapped[list["Label"]] = relationship(back_populates="session")
 

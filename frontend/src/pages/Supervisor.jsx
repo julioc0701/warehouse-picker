@@ -113,43 +113,67 @@ function ProgressHero({ sessions }) {
   )
 }
 
-// ── Ranking ───────────────────────────────────────────────────────────────────
-function OperatorRanking() {
+// ── Ranking with Batch Selector ──────────────────────────────────────────────
+// selectedBatch: null = Geral (all-time), or batch id number
+function OperatorRanking({ batches = [] }) {
+  const [selectedBatch, setSelectedBatch] = useState(null) // null = Geral
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.getOperatorRanking()
-      .then(res => { if (Array.isArray(res)) setData(res); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [])
+    setLoading(true)
+    api.getOperatorRanking(selectedBatch)
+      .then(res => { if (Array.isArray(res)) setData(res) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [selectedBatch])
 
-  if (loading) return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 animate-pulse">
-      <div className="h-4 w-40 bg-gray-200 rounded mb-6" />
-      {[1, 2, 3].map(i => <div key={i} className="h-8 bg-gray-100 rounded-full mb-3" />)}
-    </div>
-  )
-
+  const activeBatches = batches.filter(b => b.status === 'active')
   const maxValue = data.length > 0 ? Math.max(...data.map(d => d.total || 0), 1) : 1
   const medals = ['🥇', '🥈', '🥉']
-  const barColors = [
-    'from-yellow-400 to-amber-500',
-    'from-gray-300 to-gray-400',
-    'from-orange-300 to-orange-500',
-  ]
+  const barColors = ['from-yellow-400 to-amber-500', 'from-gray-300 to-gray-400', 'from-orange-300 to-orange-500']
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-      <div className="flex items-center justify-between mb-6">
+      {/* Header + Selector */}
+      <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-gray-800">🏆 Ranking de Produtividade</h3>
         <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Itens Separados</span>
       </div>
 
-      {data.length === 0 ? (
-        <div className="text-center py-8 text-gray-400 italic text-sm">
-          Nenhum dado ainda.
+      {/* Batch Tabs */}
+      <div className="flex flex-wrap gap-2 mb-5">
+        <button
+          onClick={() => setSelectedBatch(null)}
+          className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
+            selectedBatch === null
+              ? 'bg-gray-800 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          🌎 Geral
+        </button>
+        {activeBatches.map(b => (
+          <button
+            key={b.id}
+            onClick={() => setSelectedBatch(b.id)}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
+              selectedBatch === b.id
+                ? 'bg-blue-600 text-white'
+                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+            }`}
+          >
+            📦 {b.name}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1,2,3].map(i => <div key={i} className="h-8 bg-gray-100 rounded-full animate-pulse" />)}
         </div>
+      ) : data.length === 0 ? (
+        <div className="text-center py-8 text-gray-400 italic text-sm">Nenhum dado ainda.</div>
       ) : (
         <div className="flex flex-col gap-4">
           {data.slice(0, 8).map((op, idx) => (
@@ -363,12 +387,14 @@ function SessionRow({ s, onDeleted }) {
 export default function Supervisor() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('overview')
+  const [batches, setBatches] = useState([])
   const [sessions, setSessions] = useState([])
   const [printers, setPrinters] = useState([])
-  const [form, setForm] = useState({ session_code: '' })
+  const [form, setForm] = useState({ full_date: '' })
   const [files, setFiles] = useState({ pdf: null, txt: null })
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState(null)
+  const [archiveConfirm, setArchiveConfirm] = useState(null) // { oldest_batch_id, oldest_batch_name, pending_count, pendingFd }
   const [newPrinter, setNewPrinter] = useState({ name: '', ip_address: '', port: 9100 })
   const [excelFile, setExcelFile] = useState(null)
   const [excelResult, setExcelResult] = useState(null)
@@ -381,7 +407,6 @@ export default function Supervisor() {
   useEffect(() => {
     refresh()
     if (!agentCheckRef.current) { agentCheckRef.current = true; checkAgent() }
-    // Auto-refresh every 60s
     refreshIntervalRef.current = setInterval(refresh, 60_000)
     return () => clearInterval(refreshIntervalRef.current)
   }, [])
@@ -395,27 +420,44 @@ export default function Supervisor() {
   }
 
   function refresh() {
-    Promise.all([api.getSessions(), api.getPrinters()]).then(([s, p]) => {
-      setSessions(s); setPrinters(p)
+    Promise.all([api.getSessions(), api.getPrinters(), api.listBatches()]).then(([s, p, b]) => {
+      setSessions(s); setPrinters(p); setBatches(b)
       setLastRefresh(new Date())
     })
+  }
+
+  async function doUpload(fd) {
+    setUploading(true); setUploadResult(null)
+    try {
+      const res = await api.uploadSession(fd)
+      if (res.status === 'needs_confirmation') {
+        setArchiveConfirm({ ...res, pendingFd: fd })
+        return
+      }
+      setUploadResult({ ok: true, msg: `✔ Lote "${res.batch_name}" criado com ${res.lists_created} lista(s) e ${res.total_items} SKUs` })
+      setForm({ full_date: '' }); setFiles({ pdf: null, txt: null })
+      refresh()
+    } catch (err) { setUploadResult({ ok: false, msg: err.message }) }
+    finally { setUploading(false) }
   }
 
   async function handleUpload(e) {
     e.preventDefault()
     if (!files.pdf) return alert('Selecione o PDF da lista de picking')
-    setUploading(true); setUploadResult(null)
-    try {
-      const fd = new FormData()
-      fd.append('session_code', form.session_code)
-      fd.append('picking_pdf', files.pdf)
-      if (files.txt) fd.append('labels_txt', files.txt)
-      const res = await api.uploadSession(fd)
-      setUploadResult({ ok: true, msg: `✔ ${res.lists_created} lista(s) criada(s) com ${res.total_items} SKUs no total` })
-      setForm({ session_code: '' }); setFiles({ pdf: null, txt: null })
-      refresh()
-    } catch (err) { setUploadResult({ ok: false, msg: err.message }) }
-    finally { setUploading(false) }
+    if (!form.full_date) return alert('Informe a data de carregamento do Full')
+    const fd = new FormData()
+    fd.append('full_date', form.full_date)
+    fd.append('picking_pdf', files.pdf)
+    if (files.txt) fd.append('labels_txt', files.txt)
+    await doUpload(fd)
+  }
+
+  async function handleConfirmArchive() {
+    if (!archiveConfirm) return
+    const fd = new FormData(archiveConfirm.pendingFd)
+    fd.append('force_archive_batch_id', archiveConfirm.oldest_batch_id)
+    setArchiveConfirm(null)
+    await doUpload(fd)
   }
 
   async function handleAddPrinter(e) {
@@ -499,51 +541,77 @@ export default function Supervisor() {
         {tab === 'overview' && (
           <div className="flex flex-col gap-6">
             <ProgressHero sessions={sessions} />
-            <OperatorRanking />
+            <OperatorRanking batches={batches} />
           </div>
         )}
 
         {/* ─────────────────── TAB: LISTAS ─────────────────── */}
         {tab === 'lists' && (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-            <div className="flex justify-between items-center mb-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">Monitor de Listas</h2>
-              <button onClick={refresh} className="text-sm text-blue-500 hover:underline font-medium">
-                ↻ Atualizar
-              </button>
+              <button onClick={refresh} className="text-sm text-blue-500 hover:underline font-medium">↻ Atualizar</button>
             </div>
 
-            {sessions.length === 0 && (
-              <p className="text-gray-400 text-center py-12">Nenhuma lista criada ainda.</p>
-            )}
-
-            {active.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse inline-block" />
-                  Em Andamento ({active.length})
-                </h3>
-                {active.map(s => <SessionRow key={s.id} s={s} onDeleted={refresh} />)}
+            {batches.length === 0 && (
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center text-gray-400">
+                <p className="text-4xl mb-3">📦</p>
+                <p className="font-semibold">Nenhum lote carregado ainda.</p>
+                <p className="text-sm mt-1">Vá para <strong>Ferramentas</strong> e faça upload do PDF de picking.</p>
               </div>
             )}
 
-            {available.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-                  Disponíveis ({available.length})
-                </h3>
-                {available.map(s => <SessionRow key={s.id} s={s} onDeleted={refresh} />)}
-              </div>
-            )}
+            {batches.map(batch => {
+              const bPct = batch.pct || 0
+              const barColor = bPct >= 90 ? 'bg-green-500' : bPct >= 50 ? 'bg-blue-500' : 'bg-orange-400'
+              const isArchived = batch.status === 'archived'
+              return (
+                <div key={batch.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${
+                  isArchived ? 'border-gray-100 opacity-60' : 'border-gray-100'
+                }`}>
+                  {/* Batch header */}
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">📦</span>
+                      <div>
+                        <p className="font-bold text-gray-800">
+                          {batch.name}
+                          {isArchived && <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Arquivado</span>}
+                        </p>
+                        <p className="text-xs text-gray-400">{batch.sessions.length} lista(s) · {batch.total_items.toLocaleString('pt-BR')} itens</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-lg font-black text-gray-700">{bPct}%</p>
+                        <p className="text-xs text-gray-400">{batch.total_picked.toLocaleString('pt-BR')} / {batch.total_items.toLocaleString('pt-BR')}</p>
+                      </div>
+                      {!isArchived && (
+                        <button
+                          onClick={() => api.archiveBatch(batch.id).then(refresh)}
+                          className="text-xs text-gray-400 hover:text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
+                          title="Arquivar este lote"
+                        >
+                          Arquivar
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-            {done.length > 0 && (
-              <div>
-                <h3 className="text-xs font-bold text-green-600 uppercase tracking-widest mb-3">
-                  Concluídas ({done.length})
-                </h3>
-                {done.map(s => <SessionRow key={s.id} s={s} onDeleted={refresh} />)}
-              </div>
-            )}
+                  {/* Batch progress bar */}
+                  <div className="h-1.5 bg-gray-100">
+                    <div className={`h-full ${barColor} transition-all`} style={{ width: `${bPct}%` }} />
+                  </div>
+
+                  {/* Sessions in this batch */}
+                  <div className="divide-y divide-gray-50">
+                    {batch.sessions.map(s => (
+                      <SessionRow key={s.id} s={s} onDeleted={refresh} />
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -551,20 +619,41 @@ export default function Supervisor() {
         {tab === 'tools' && (
           <div className="grid grid-cols-2 gap-6">
 
-            <ToolCard
+              <ToolCard
               icon="📤"
               title="Carregar Novo Envio"
-              description="O sistema divide automaticamente em listas de até 1.000 unidades, ordenadas do maior para o menor."
+              description="Informe a data de carregamento do Full. O sistema cria as listas automaticamente e agrupa por data."
               accentColor="blue"
             >
+              {/* Archive confirmation dialog */}
+              {archiveConfirm && (
+                <div className="mb-4 p-4 bg-orange-50 border-2 border-orange-200 rounded-xl">
+                  <p className="text-sm font-bold text-orange-800 mb-1">⚠️ Lote cheio</p>
+                  <p className="text-sm text-orange-700 mb-3">{archiveConfirm.msg}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setArchiveConfirm(null)}
+                      className="flex-1 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleConfirmArchive}
+                      className="flex-1 py-2 rounded-lg bg-orange-500 text-white text-sm font-bold hover:bg-orange-600"
+                    >
+                      Arquivar e continuar
+                    </button>
+                  </div>
+                </div>
+              )}
               <form onSubmit={handleUpload} className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Código do Envio</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Data de Carregamento do Full</label>
                   <input
+                    type="date"
                     className="w-full border-2 border-gray-200 rounded-xl p-3 text-base focus:border-blue-400 outline-none"
-                    placeholder="ex: Envio-62040720"
-                    value={form.session_code}
-                    onChange={e => setForm(f => ({ ...f, session_code: e.target.value }))}
+                    value={form.full_date}
+                    onChange={e => setForm(f => ({ ...f, full_date: e.target.value }))}
                     required
                   />
                 </div>

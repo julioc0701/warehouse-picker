@@ -1,11 +1,11 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
-from models import Session, PickingItem, Label, Barcode, Operator, ScanEvent
+from models import Session, PickingItem, Label, Barcode, Operator, ScanEvent, Batch
 from parsers.pdf_parser import parse_picking_pdf
 from parsers.zpl_parser import parse_zpl_file, get_ml_barcodes
 from services import picking as svc
@@ -45,30 +45,88 @@ def split_into_batches(items: list[dict], max_units: int = 1000) -> list[list[di
 
 # ── Upload ───────────────────────────────────────────────────────────────────
 
-def _clear_all_sessions(db: DBSession):
-    """Delete all sessions and their children (picking items, scan events, labels)."""
-    item_ids = [r[0] for r in db.query(PickingItem.id).all()]
-    if item_ids:
-        db.query(ScanEvent).filter(ScanEvent.picking_item_id.in_(item_ids)).delete(synchronize_session=False)
-    db.query(Label).delete(synchronize_session=False)
-    db.query(PickingItem).delete(synchronize_session=False)
-    db.query(Session).delete(synchronize_session=False)
+MAX_ACTIVE_BATCHES = 3
+
+
+def _date_to_prefix(d: date) -> str:
+    """Convert a date to a session code prefix. e.g. 2026-03-19 -> '19-03-2026'"""
+    return d.strftime("%d-%m-%Y")
+
+
+def _archive_batch(batch: Batch, db: DBSession):
+    """Set batch status to archived (sessions and data are preserved)."""
+    batch.status = "archived"
+    db.commit()
+
+
+@router.get("/batches")
+def list_batches(db: DBSession = Depends(get_db)):
+    """Return all batches with per-batch progress summary."""
+    batches = db.query(Batch).order_by(Batch.full_date.asc(), Batch.seq.asc()).all()
+    result = []
+    for b in batches:
+        sess_data = []
+        for s in b.sessions:
+            s_total  = sum(i.qty_required for i in s.items)
+            s_picked = sum(i.qty_picked   for i in s.items)
+            sess_data.append({
+                "id": s.id,
+                "session_code": s.session_code,
+                "operator_name": s.operator.name if s.operator else None,
+                "status": s.status,
+                "items_total": s_total,
+                "items_picked": s_picked,
+            })
+        total_items  = sum(sd["items_total"]  for sd in sess_data)
+        total_picked = sum(sd["items_picked"] for sd in sess_data)
+        pct = round((total_picked / total_items) * 100) if total_items else 0
+        result.append({
+            "id": b.id,
+            "name": b.name,
+            "full_date": b.full_date.isoformat(),
+            "seq": b.seq,
+            "status": b.status,
+            "created_at": b.created_at.isoformat(),
+            "total_items": total_items,
+            "total_picked": total_picked,
+            "pct": pct,
+            "sessions": sess_data,
+        })
+    return result
+
+
+@router.post("/batches/{batch_id}/archive")
+def archive_batch(batch_id: int, db: DBSession = Depends(get_db)):
+    """Manually archive a batch (preserves all sessions and data)."""
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(404, "Lote não encontrado")
+    if batch.status == "archived":
+        return {"ok": True, "msg": "Lote já estava arquivado"}
+    _archive_batch(batch, db)
+    return {"ok": True, "msg": f"Lote '{batch.name}' arquivado com sucesso"}
 
 
 @router.post("/upload", status_code=201)
 async def upload_session(
-    session_code: str = Form(...),
+    full_date: str = Form(...),           # ISO date: "2026-03-19"
     picking_pdf: UploadFile = File(...),
     labels_txt: UploadFile | None = File(None),
+    force_archive_batch_id: int | None = Form(None),  # confirmed archiving
     db: DBSession = Depends(get_db),
 ):
-    pdf_bytes = await picking_pdf.read()
+    # Parse date
+    try:
+        batch_date = date.fromisoformat(full_date)
+    except ValueError:
+        raise HTTPException(400, "Data inválida. Use o formato YYYY-MM-DD.")
+
+    pdf_bytes   = await picking_pdf.read()
     txt_content = (await labels_txt.read()).decode("utf-8", errors="replace") if labels_txt else ""
 
-    logger.info("Upload iniciado: session_code=%s pdf=%d bytes txt=%d bytes",
-                session_code, len(pdf_bytes), len(txt_content))
+    logger.info("Upload iniciado: full_date=%s pdf=%d bytes txt=%d bytes",
+                full_date, len(pdf_bytes), len(txt_content))
 
-    # Roda parsers pesados em thread para não bloquear o event loop do uvicorn
     loop = asyncio.get_event_loop()
     try:
         items_data = await asyncio.wait_for(
@@ -77,7 +135,7 @@ async def upload_session(
         )
     except asyncio.TimeoutError:
         logger.error("Timeout ao processar PDF (%d bytes)", len(pdf_bytes))
-        raise HTTPException(408, "PDF demorou mais de 2 min para processar. Verifique o arquivo.")
+        raise HTTPException(408, "PDF demorou mais de 2 min. Verifique o arquivo.")
     except Exception as exc:
         logger.exception("Erro ao parsear PDF")
         raise HTTPException(400, f"Erro ao ler PDF: {exc}")
@@ -91,43 +149,99 @@ async def upload_session(
             )
         except Exception as exc:
             logger.exception("Erro ao parsear TXT/ZPL")
-            raise HTTPException(400, f"Erro ao ler arquivo de etiquetas: {exc}")
+            raise HTTPException(400, f"Erro ao ler etiquetas: {exc}")
 
     logger.info("Parse concluído: %d itens, %d etiquetas", len(items_data), len(labels_data))
 
     if not items_data:
         raise HTTPException(400, "Nenhum item encontrado no PDF. Verifique se é uma lista de picking do Mercado Livre.")
 
-    # ── Replace all previous data ──────────────────────────────────────────
-    # CUIDADO: _clear_all_sessions() foi re-ativado a pedido do usuario.
-    _clear_all_sessions(db)
+    # ── FIFO: enforce max 3 active batches ───────────────────────────────────
+    active_batches = (
+        db.query(Batch)
+        .filter(Batch.status == "active")
+        .order_by(Batch.full_date.asc(), Batch.seq.asc())
+        .all()
+    )
 
-    # Split items into batches of max 1000 units, sorted by qty desc
-    batches = split_into_batches(items_data, max_units=1000)
+    if len(active_batches) >= MAX_ACTIVE_BATCHES:
+        oldest = active_batches[0]
 
-    # Pre-load existing barcodes to avoid duplicates (per SKU)
-    added_barcodes: set[tuple[str, str]] = set((r[0], r[1]) for r in db.query(Barcode.barcode, Barcode.sku).all())
+        if force_archive_batch_id and force_archive_batch_id == oldest.id:
+            # User confirmed → archive and proceed
+            _archive_batch(oldest, db)
+        else:
+            # Check pending items in oldest batch
+            pending_count = (
+                db.query(PickingItem)
+                .join(Session, Session.id == PickingItem.session_id)
+                .filter(
+                    Session.batch_id == oldest.id,
+                    PickingItem.status.in_(["pending", "in_progress"])
+                )
+                .count()
+            )
+            if pending_count > 0:
+                return {
+                    "status": "needs_confirmation",
+                    "msg": f"O lote mais antigo '{oldest.name}' ainda tem {pending_count} item(ns) pendente(s). Deseja arquivá-lo?",
+                    "oldest_batch_id": oldest.id,
+                    "oldest_batch_name": oldest.name,
+                    "pending_count": pending_count,
+                }
+            else:
+                _archive_batch(oldest, db)
+
+    # ── Create new Batch ─────────────────────────────────────────────────────
+    existing_same_date = (
+        db.query(Batch)
+        .filter(Batch.full_date == batch_date, Batch.status == "active")
+        .count()
+    )
+    seq = existing_same_date + 1
+    date_str = batch_date.strftime("%d/%m/%Y")
+    batch_name = date_str if seq == 1 else f"{date_str} · nº{seq}"
+    new_batch = Batch(
+        full_date=batch_date,
+        seq=seq,
+        name=batch_name,
+        status="active",
+        created_at=datetime.utcnow(),
+    )
+    db.add(new_batch)
+    db.flush()
+
+    # ── Build session code prefix ─────────────────────────────────────────────
+    prefix = _date_to_prefix(batch_date)
+    if seq > 1:
+        prefix = f"{prefix}-{chr(64 + seq)}"  # -B, -C, ...
+
+    # ── Split PDF into picking lists ─────────────────────────────────────────
+    batches_split = split_into_batches(items_data, max_units=1000)
+
+    added_barcodes: set[tuple[str, str]] = set(
+        (r[0], r[1]) for r in db.query(Barcode.barcode, Barcode.sku).all()
+    )
 
     def add_barcode_safe(barcode: str, sku: str, is_primary: bool):
         if barcode and (barcode, sku) not in added_barcodes:
             db.add(Barcode(barcode=barcode, sku=sku, is_primary=is_primary))
             added_barcodes.add((barcode, sku))
 
-    # Build SKU → labels map from ZPL
     sku_labels: dict[str, list] = {}
     for lbl in labels_data:
         sku_labels.setdefault(lbl["sku"], []).append(lbl)
 
     created_sessions = []
-    total_batches = len(batches)
+    total_in_batch = len(batches_split)
 
-    for idx, batch in enumerate(batches, start=1):
-        code = f"{session_code}-L{idx:02d}" if total_batches > 1 else session_code
-        sess = Session(session_code=code, operator_id=None, status="open")
+    for idx, batch_items in enumerate(batches_split, start=1):
+        code = f"{prefix}-L{idx:02d}" if total_in_batch > 1 else prefix
+        sess = Session(session_code=code, operator_id=None, status="open", batch_id=new_batch.id)
         db.add(sess)
         db.flush()
 
-        for item in batch:
+        for item in batch_items:
             pi = PickingItem(
                 session_id=sess.id,
                 sku=item["sku"],
@@ -141,7 +255,6 @@ async def upload_session(
             if ean:
                 add_barcode_safe(ean, item["sku"], False)
 
-            # Attach ZPL labels for this SKU to this sub-session
             for lbl in sku_labels.get(item["sku"], []):
                 db.add(Label(
                     session_id=sess.id,
@@ -150,19 +263,21 @@ async def upload_session(
                     zpl_content=lbl["zpl_content"],
                 ))
 
-        created_sessions.append({"session_id": sess.id, "session_code": code, "items": len(batch)})
+        created_sessions.append({"session_id": sess.id, "session_code": code, "items": len(batch_items)})
 
-    # Register ML codes as barcodes
     for entry in get_ml_barcodes(txt_content):
         add_barcode_safe(entry["ml_code"], entry["sku"], False)
 
     db.commit()
     return {
-        "base_code": session_code,
+        "status": "ok",
+        "batch_id": new_batch.id,
+        "batch_name": batch_name,
         "lists_created": len(created_sessions),
         "total_items": len(items_data),
         "sessions": created_sessions,
     }
+
 
 
 # ── Claim ─────────────────────────────────────────────────────────────────────

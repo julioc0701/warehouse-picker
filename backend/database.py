@@ -168,3 +168,21 @@ def init_db():
             conn.commit()
             print("--- DATABASE MIGRATION: UNIQUE constraint removed successfully ---")
 
+        # ── BATCH SUPPORT MIGRATION ───────────────────────────────────────────
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS batches (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                full_date  DATE NOT NULL,
+                seq        INTEGER NOT NULL DEFAULT 1,
+                name       VARCHAR(100) NOT NULL,
+                status     VARCHAR(20) NOT NULL DEFAULT 'active',
+                created_at DATETIME NOT NULL
+            )
+        """))
+        conn.commit()
+
+        sess_cols = [c["name"] for c in insp.get_columns("sessions")]
+        if "batch_id" not in sess_cols:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN batch_id INTEGER REFERENCES batches(id)"))
+            conn.commit()
+            print("--- DATABASE MIGRATION: batch_id added to sessions ---")
