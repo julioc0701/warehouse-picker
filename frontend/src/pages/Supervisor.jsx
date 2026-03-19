@@ -552,95 +552,143 @@ export default function Supervisor() {
 
         {/* ─────────────────── TAB: LISTAS ─────────────────── */}
         {tab === 'lists' && (() => {
-          // Sessions that belong to a known batch (referenced in batches list)
           const batchSessionIds = new Set(batches.flatMap(b => b.sessions.map(s => s.id)))
-          // Orphan sessions = sessions without a batch (created before batch feature)
-          const orphanSessions = sessions.filter(s => !batchSessionIds.has(s.id))
+          const orphanSessions  = sessions.filter(s => !batchSessionIds.has(s.id))
 
           return (
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-800">Monitor de Listas</h2>
-              <button onClick={refresh} className="text-sm text-blue-500 hover:underline font-medium">↻ Atualizar</button>
-            </div>
+            <div className="flex flex-col gap-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">Envios</h2>
+                  <p className="text-sm text-gray-400 mt-0.5">Clique em um lote para ver o detalhe das listas</p>
+                </div>
+                <button onClick={refresh} className="text-sm text-blue-500 hover:underline font-medium">↻ Atualizar</button>
+              </div>
 
-            {/* Batch sections */}
-            {batches.map(batch => {
-              const bPct = batch.pct || 0
-              const barColor = bPct >= 90 ? 'bg-green-500' : bPct >= 50 ? 'bg-blue-500' : 'bg-orange-400'
-              const isArchived = batch.status === 'archived'
-              return (
-                <div key={batch.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${
-                  isArchived ? 'border-gray-100 opacity-60' : 'border-gray-100'
-                }`}>
-                  {/* Batch header */}
-                  <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg">📦</span>
-                      <div>
-                        <p className="font-bold text-gray-800">
-                          {batch.name}
-                          {isArchived && <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Arquivado</span>}
-                        </p>
-                        <p className="text-xs text-gray-400">{batch.sessions.length} lista(s) · {batch.total_items.toLocaleString('pt-BR')} itens</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="text-lg font-black text-gray-700">{bPct}%</p>
-                        <p className="text-xs text-gray-400">{batch.total_picked.toLocaleString('pt-BR')} / {batch.total_items.toLocaleString('pt-BR')}</p>
-                      </div>
-                      {!isArchived && (
+              {/* Active batch cards grid */}
+              {batches.filter(b => b.status === 'active').length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Ativos</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {batches.filter(b => b.status === 'active').map(batch => {
+                      const bPct = batch.pct || 0
+                      const barColor = bPct >= 90 ? 'bg-green-500' : bPct >= 50 ? 'bg-blue-500' : 'bg-orange-400'
+                      const active    = batch.sessions.filter(s => s.status === 'in_progress').length
+                      const available = batch.sessions.filter(s => s.status === 'open').length
+                      const done      = batch.sessions.filter(s => s.status === 'completed').length
+                      return (
                         <button
-                          onClick={() => api.archiveBatch(batch.id).then(refresh)}
-                          className="text-xs text-gray-400 hover:text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
-                          title="Arquivar este lote"
+                          key={batch.id}
+                          onClick={() => navigate(`/supervisor/batch/${batch.id}`)}
+                          className="bg-white text-left rounded-2xl border-2 border-gray-100 shadow-sm hover:shadow-lg hover:border-blue-200 hover:-translate-y-1 transition-all duration-200 overflow-hidden group"
                         >
-                          Arquivar
+                          {/* Top section */}
+                          <div className="p-5">
+                            <div className="flex items-start justify-between mb-4">
+                              <div>
+                                <span className="text-2xl">📦</span>
+                                <p className="font-black text-gray-900 text-lg mt-1">{batch.name}</p>
+                                <p className="text-xs text-gray-400 mt-0.5">{batch.sessions.length} lista(s) · {batch.total_items.toLocaleString('pt-BR')} itens</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-3xl font-black text-gray-800">{bPct}<span className="text-lg text-gray-400">%</span></p>
+                              </div>
+                            </div>
+
+                            {/* Progress bar */}
+                            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden mb-4">
+                              <div className={`h-full rounded-full ${barColor} transition-all duration-700`} style={{ width: `${bPct}%` }} />
+                            </div>
+
+                            {/* KPI chips */}
+                            <div className="flex gap-2 flex-wrap">
+                              {active > 0    && <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">🔵 {active} andamento</span>}
+                              {available > 0 && <span className="text-xs font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">⚪ {available} disponível</span>}
+                              {done > 0      && <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✅ {done} concluída</span>}
+                            </div>
+                          </div>
+
+                          {/* Footer */}
+                          <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                            <span className="text-xs text-gray-400">{batch.total_picked.toLocaleString('pt-BR')} / {batch.total_items.toLocaleString('pt-BR')} itens</span>
+                            <span className="text-xs font-bold text-blue-500 group-hover:underline">Ver detalhes →</span>
+                          </div>
                         </button>
-                      )}
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Archived batch cards */}
+              {batches.filter(b => b.status === 'archived').length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Arquivados</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {batches.filter(b => b.status === 'archived').map(batch => {
+                      const bPct = batch.pct || 0
+                      return (
+                        <button
+                          key={batch.id}
+                          onClick={() => navigate(`/supervisor/batch/${batch.id}`)}
+                          className="bg-white text-left rounded-2xl border border-dashed border-gray-200 opacity-60 hover:opacity-90 hover:shadow-md transition-all overflow-hidden group"
+                        >
+                          <div className="p-5">
+                            <div className="flex items-start justify-between mb-3">
+                              <div>
+                                <span className="text-xl">🗂</span>
+                                <p className="font-bold text-gray-600 mt-1">{batch.name}</p>
+                                <p className="text-xs text-gray-400 mt-0.5">{batch.sessions.length} lista(s)</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-2xl font-black text-gray-500">{bPct}<span className="text-sm text-gray-400">%</span></p>
+                                <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Arquivado</span>
+                              </div>
+                            </div>
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-gray-300 rounded-full" style={{ width: `${bPct}%` }} />
+                            </div>
+                          </div>
+                          <div className="px-5 py-2 bg-gray-50 border-t border-gray-100">
+                            <span className="text-xs font-bold text-gray-400 group-hover:underline">Ver detalhes →</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Orphan sessions card */}
+              {orphanSessions.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Listas Anteriores</p>
+                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="text-2xl">🗂</span>
+                      <div>
+                        <p className="font-bold text-gray-600">Listas sem lote</p>
+                        <p className="text-xs text-gray-400">{orphanSessions.length} lista(s) criadas antes do sistema de lotes</p>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {orphanSessions.map(s => (
+                        <SessionRow key={s.id} s={s} onDeleted={refresh} />
+                      ))}
                     </div>
                   </div>
-                  <div className="h-1.5 bg-gray-100">
-                    <div className={`h-full ${barColor} transition-all`} style={{ width: `${bPct}%` }} />
-                  </div>
-                  <div className="divide-y divide-gray-50">
-                    {batch.sessions.map(s => (
-                      <SessionRow key={s.id} s={s} onDeleted={refresh} />
-                    ))}
-                  </div>
                 </div>
-              )
-            })}
+              )}
 
-            {/* Orphan sessions (created before batch feature) */}
-            {orphanSessions.length > 0 && (
-              <div className="bg-white rounded-2xl border border-dashed border-gray-200 overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">🗂</span>
-                    <div>
-                      <p className="font-bold text-gray-600">Listas Anteriores</p>
-                      <p className="text-xs text-gray-400">{orphanSessions.length} lista(s) criadas antes do sistema de lotes</p>
-                    </div>
-                  </div>
+              {/* Empty state */}
+              {batches.length === 0 && orphanSessions.length === 0 && (
+                <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-16 text-center text-gray-400">
+                  <p className="text-5xl mb-4">📦</p>
+                  <p className="font-bold text-lg">Nenhum envio carregado ainda.</p>
+                  <p className="text-sm mt-1">Vá para <strong>Ferramentas</strong> e faça upload do PDF de picking.</p>
                 </div>
-                <div className="divide-y divide-gray-50">
-                  {orphanSessions.map(s => (
-                    <SessionRow key={s.id} s={s} onDeleted={refresh} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {batches.length === 0 && orphanSessions.length === 0 && (
-              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center text-gray-400">
-                <p className="text-4xl mb-3">📦</p>
-                <p className="font-semibold">Nenhuma lista criada ainda.</p>
-                <p className="text-sm mt-1">Vá para <strong>Ferramentas</strong> e faça upload do PDF de picking.</p>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
           )
         })()}
 
