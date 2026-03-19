@@ -142,7 +142,7 @@ function OperatorRanking({ batches = [] }) {
       </div>
 
       {/* Batch Tabs */}
-      <div className="flex flex-wrap gap-2 mb-5">
+      <div className="flex flex-wrap gap-2 mb-2">
         <button
           onClick={() => setSelectedBatch(null)}
           className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
@@ -167,6 +167,11 @@ function OperatorRanking({ batches = [] }) {
           </button>
         ))}
       </div>
+      {activeBatches.length === 0 && (
+        <p className="text-xs text-gray-400 italic mb-4">
+          📌 Os botões de lote aparecerão após o upload do primeiro PDF com data de carregamento.
+        </p>
+      )}
 
       {loading ? (
         <div className="space-y-3">
@@ -546,21 +551,20 @@ export default function Supervisor() {
         )}
 
         {/* ─────────────────── TAB: LISTAS ─────────────────── */}
-        {tab === 'lists' && (
+        {tab === 'lists' && (() => {
+          // Sessions that belong to a known batch (referenced in batches list)
+          const batchSessionIds = new Set(batches.flatMap(b => b.sessions.map(s => s.id)))
+          // Orphan sessions = sessions without a batch (created before batch feature)
+          const orphanSessions = sessions.filter(s => !batchSessionIds.has(s.id))
+
+          return (
           <div className="flex flex-col gap-4">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">Monitor de Listas</h2>
               <button onClick={refresh} className="text-sm text-blue-500 hover:underline font-medium">↻ Atualizar</button>
             </div>
 
-            {batches.length === 0 && (
-              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center text-gray-400">
-                <p className="text-4xl mb-3">📦</p>
-                <p className="font-semibold">Nenhum lote carregado ainda.</p>
-                <p className="text-sm mt-1">Vá para <strong>Ferramentas</strong> e faça upload do PDF de picking.</p>
-              </div>
-            )}
-
+            {/* Batch sections */}
             {batches.map(batch => {
               const bPct = batch.pct || 0
               const barColor = bPct >= 90 ? 'bg-green-500' : bPct >= 50 ? 'bg-blue-500' : 'bg-orange-400'
@@ -597,13 +601,9 @@ export default function Supervisor() {
                       )}
                     </div>
                   </div>
-
-                  {/* Batch progress bar */}
                   <div className="h-1.5 bg-gray-100">
                     <div className={`h-full ${barColor} transition-all`} style={{ width: `${bPct}%` }} />
                   </div>
-
-                  {/* Sessions in this batch */}
                   <div className="divide-y divide-gray-50">
                     {batch.sessions.map(s => (
                       <SessionRow key={s.id} s={s} onDeleted={refresh} />
@@ -612,8 +612,37 @@ export default function Supervisor() {
                 </div>
               )
             })}
+
+            {/* Orphan sessions (created before batch feature) */}
+            {orphanSessions.length > 0 && (
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">🗂</span>
+                    <div>
+                      <p className="font-bold text-gray-600">Listas Anteriores</p>
+                      <p className="text-xs text-gray-400">{orphanSessions.length} lista(s) criadas antes do sistema de lotes</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {orphanSessions.map(s => (
+                    <SessionRow key={s.id} s={s} onDeleted={refresh} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {batches.length === 0 && orphanSessions.length === 0 && (
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center text-gray-400">
+                <p className="text-4xl mb-3">📦</p>
+                <p className="font-semibold">Nenhuma lista criada ainda.</p>
+                <p className="text-sm mt-1">Vá para <strong>Ferramentas</strong> e faça upload do PDF de picking.</p>
+              </div>
+            )}
           </div>
-        )}
+          )
+        })()}
 
         {/* ─────────────────── TAB: FERRAMENTAS ─────────────────── */}
         {tab === 'tools' && (

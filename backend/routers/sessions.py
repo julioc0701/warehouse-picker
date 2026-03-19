@@ -494,41 +494,37 @@ def find_by_barcode(
 @router.get("/shortage-report")
 def shortage_report(db: DBSession = Depends(get_db)):
     """
-    Retorna todos os SKUs com falta (shortage_qty > 0) de todas as sessões
-    (em andamento e concluídas), agregados por SKU.
+    Retorna todos os SKUs com falta (shortage_qty > 0) de todas as sessões,
+    agrupados por (SKU, Lista) para mostrar qual lista originou a falta.
     """
-    from sqlalchemy import func
-
     raw_rows = (
         db.query(
             PickingItem.sku,
             PickingItem.description,
             PickingItem.shortage_qty,
             PickingItem.notes,
+            Session.session_code,
         )
         .join(Session, Session.id == PickingItem.session_id)
-        .filter(
-            PickingItem.shortage_qty > 0,
-        )
+        .filter(PickingItem.shortage_qty > 0)
+        .order_by(Session.session_code, PickingItem.sku)
         .all()
     )
 
-    # Agrupa por (SKU, Descrição) no Python para evitar incompatibilidade de SQL (SQLite vs Postgres)
+    # Agrega por (SKU, Lista) — mesmo SKU em listas diferentes aparece separado
     aggregated = {}
     for r in raw_rows:
-        key = (r.sku, r.description or "")
+        key = (r.sku, r.session_code)
         if key not in aggregated:
             aggregated[key] = {
                 "sku": r.sku,
                 "description": r.description,
+                "session_code": r.session_code,
                 "shortage_qty": 0,
                 "all_notes": set()
             }
-        
         aggregated[key]["shortage_qty"] += r.shortage_qty
         if r.notes:
-            # Se a nota for uma string com vírgulas (de agregações anteriores ou múltipla entrada), 
-            # lidamos com ela como partes
             for part in r.notes.split(","):
                 p = part.strip()
                 if p:
@@ -538,6 +534,7 @@ def shortage_report(db: DBSession = Depends(get_db)):
         {
             "sku": v["sku"],
             "description": v["description"],
+            "session_code": v["session_code"],
             "shortage_qty": v["shortage_qty"],
             "notes": ", ".join(sorted(list(v["all_notes"]))) if v["all_notes"] else None
         }

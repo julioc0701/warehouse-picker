@@ -60,18 +60,24 @@ export default function ShortageReport() {
                   <tr className="border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     <th className="pb-3 pr-4">SKU</th>
                     <th className="pb-3 pr-4">Descrição</th>
+                    <th className="pb-3 pr-4">Lista</th>
                     <th className="pb-3 pr-4">Observação</th>
                     <th className="pb-3 text-right text-red-500">Qtd Faltante</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {items.map(item => (
-                    <tr key={item.sku} className="hover:bg-gray-50">
+                    <tr key={`${item.sku}-${item.session_code}`} className="hover:bg-gray-50">
                       <td className="py-3 pr-4 font-mono font-semibold whitespace-nowrap">
                         {item.sku}
                       </td>
                       <td className="py-3 pr-4 text-gray-700">
                         {item.description || '—'}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className="font-mono text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          {item.session_code || '—'}
+                        </span>
                       </td>
                       <td className="py-3 pr-4">
                         <div
