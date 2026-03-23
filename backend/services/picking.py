@@ -45,6 +45,14 @@ def process_scan(
     else:
         is_barcode = True
 
+    # --- NOVO: PRIORIDADE DE FOCO ---
+    # Se temos um SKU focado, e esse código NÃO está vinculado a ele, 
+    # ignoramos qualquer outro SKU global para forçar o vínculo local.
+    if focus_sku:
+        if focus_sku.upper() not in [s.upper() for s in skus]:
+            return {"status": "unknown_barcode", "barcode": barcode}
+    # -------------------------------
+
     # Find which of these SKUs are in the current session
     items = (
         db.query(PickingItem)

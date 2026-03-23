@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
+import MarketplaceLogo from '../components/MarketplaceLogo'
 
 const STATUS_COLOR = {
   pending: 'text-gray-400',
@@ -106,7 +107,9 @@ export default function SessionItems() {
       <div className="bg-white shadow px-6 py-4 flex flex-col gap-2">
         <div className="flex justify-between items-center">
           <div className="flex gap-4 items-baseline">
-            <span className="text-2xl font-bold">{operator?.name}</span>
+            <span className="text-2xl font-bold flex items-center gap-2">
+              <MarketplaceLogo marketplace={session?.marketplace} size={24} /> {operator?.name}
+            </span>
             <span className="text-xl text-gray-500">{session?.session_code}</span>
           </div>
           <button onClick={() => navigate('/sessions')} className="text-gray-400 hover:text-gray-700">

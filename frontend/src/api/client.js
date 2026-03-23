@@ -89,6 +89,8 @@ export const api = {
     req('POST', '/print-jobs', { session_id: sessionId, sku, zpl_content: zplContent, operator_id: operatorId }),
   getPrintJobStatus: (sessionId, sku) =>
     req('GET', `/print-jobs?session_id=${sessionId}&sku=${encodeURIComponent(sku)}`),
+  getLabelsZpl: (sessionId, sku) => 
+    req('GET', `/labels/zpl?session_id=${sessionId}&sku=${encodeURIComponent(sku)}`),
 
   // Master Data CRUD
   createProduct: (sku, description, barcodes) =>
@@ -103,6 +105,13 @@ export const api = {
     req('DELETE', `/barcodes/${encodeURIComponent(sku)}/barcode/${encodeURIComponent(barcode)}`),
 
   // Stats
-  getOperatorRanking: (batchId = null) => req('GET', `/stats/ranking${batchId ? `?batch_id=${batchId}` : ''}`),
+  getOperatorRanking: (batchId = null, marketplace = null) => {
+    let url = '/stats/ranking';
+    const params = [];
+    if (batchId) params.push(`batch_id=${batchId}`);
+    if (marketplace) params.push(`marketplace=${marketplace}`);
+    if (params.length > 0) url += `?${params.join('&')}`;
+    return req('GET', url);
+  },
   getBatchesForRanking: () => req('GET', '/stats/batches-for-ranking'),
 }

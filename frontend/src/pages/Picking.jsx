@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
+import MarketplaceLogo from '../components/MarketplaceLogo'
 import TransferConfirmDialog from '../components/dialogs/TransferConfirmDialog'
 import SearchSelectionDialog from '../components/dialogs/SearchSelectionDialog'
 import ShortageDialog from '../components/dialogs/ShortageDialog'
@@ -78,6 +79,55 @@ function buildZplBlockSingle(mlCode, description, sku) {
     `^FO105,76^A0N,20,25^FH^FD${mlCode}^FS\n` +
     `^FO16,115^A0N,18,18^FB300,2,2,L^FH^FD${safeDesc}^FS\n` +
     `^FO16,172^A0N,18,18^FH^FDSKU: ${sku}^FS\n` +
+    '^XZ'
+  )
+}
+
+function buildShopeeZplBlock(mlCode, description, sku) {
+  let nameLine = (description || '').replace(/\^/g, ' ')
+  if (nameLine.length > 40) {
+    const sub = nameLine.substring(0, 40)
+    const lastSpace = sub.lastIndexOf(' ')
+    nameLine = lastSpace > 0 ? sub.substring(0, lastSpace) : sub
+  }
+
+  return (
+    '^XA^CI28^PW640^LL200\n' +
+    // ── Etiqueta ESQUERDA (X base 10) ──
+    '^LH0,0\n' +
+    `^FO10,5^A0N,18,18^FD${nameLine}^FS\n` +
+    `^FO90,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
+    `^FO10,135^A0N,18,18^FDseller sku: ${sku}^FS\n` +
+    `^FO10,155^A0N,18,18^FDbarcode: ${mlCode}^FS\n` +
+    `^FO10,175^A0N,18,18^FDwhs skuid: ${mlCode}^FS\n` +
+    // ── Etiqueta DIREITA (X base 330) ──
+    '^CI28\n' +
+    '^LH0,0\n' +
+    `^FO330,5^A0N,18,18^FD${nameLine}^FS\n` +
+    `^FO410,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
+    `^FO330,135^A0N,18,18^FDseller sku: ${sku}^FS\n` +
+    `^FO330,155^A0N,18,18^FDbarcode: ${mlCode}^FS\n` +
+    `^FO330,175^A0N,18,18^FDwhs skuid: ${mlCode}^FS\n` +
+    '^XZ'
+  )
+}
+
+function buildShopeeZplBlockSingle(mlCode, description, sku) {
+  let nameLine = (description || '').replace(/\^/g, ' ')
+  if (nameLine.length > 40) {
+    const sub = nameLine.substring(0, 40)
+    const lastSpace = sub.lastIndexOf(' ')
+    nameLine = lastSpace > 0 ? sub.substring(0, lastSpace) : sub
+  }
+
+  return (
+    '^XA^CI28^PW640^LL200\n' +
+    '^LH0,0\n' +
+    `^FO10,5^A0N,18,18^FD${nameLine}^FS\n` +
+    `^FO90,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
+    `^FO10,135^A0N,18,18^FDseller sku: ${sku}^FS\n` +
+    `^FO10,155^A0N,18,18^FDbarcode: ${mlCode}^FS\n` +
+    `^FO10,175^A0N,18,18^FDwhs skuid: ${mlCode}^FS\n` +
     '^XZ'
   )
 }
@@ -448,11 +498,21 @@ export default function Picking() {
     const fullPairs = Math.floor(qty / 2)
     const remainder = qty % 2
 
-    const blocks = [
-      ...Array.from({ length: fullPairs }, () => buildZplBlock(mlCode, desc, sku)),
-      ...(remainder === 1 ? [buildZplBlockSingle(mlCode, desc, sku)] : []),
-    ]
-    const fullZpl = blocks.join('\n')
+    let fullZpl = ''
+
+    if (session?.marketplace === 'shopee') {
+      const blocks = [
+        ...Array.from({ length: fullPairs }, () => buildShopeeZplBlock(mlCode, desc, sku)),
+        ...(remainder === 1 ? [buildShopeeZplBlockSingle(mlCode, desc, sku), '^XA^XZ'] : []),
+      ]
+      fullZpl = blocks.join('\n')
+    } else {
+      const blocks = [
+        ...Array.from({ length: fullPairs }, () => buildZplBlock(mlCode, desc, sku)),
+        ...(remainder === 1 ? [buildZplBlockSingle(mlCode, desc, sku)] : []),
+      ]
+      fullZpl = blocks.join('\n')
+    }
 
     try {
       const isHttps = window.location.protocol === 'https:'
@@ -574,7 +634,9 @@ export default function Picking() {
       <div className="bg-white shadow px-6 py-4 flex flex-col gap-2">
         <div className="flex justify-between items-center">
           <div className="flex gap-6 items-baseline">
-            <span className="text-2xl font-bold">{operator?.name}</span>
+            <span className="text-2xl font-bold flex items-center gap-2">
+              <MarketplaceLogo marketplace={session?.marketplace} size={24} /> {operator?.name}
+            </span>
             <span className="text-xl text-gray-500">{session?.session_code}</span>
           </div>
           <button

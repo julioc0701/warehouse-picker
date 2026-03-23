@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import MarketplaceLogo from '../components/MarketplaceLogo'
 import SearchSelectionDialog from '../components/dialogs/SearchSelectionDialog'
 
 export default function SessionSelect() {
@@ -245,7 +246,9 @@ export default function SessionSelect() {
                     className="w-full bg-blue-50 border-2 border-blue-400 rounded-2xl p-6 text-left hover:bg-blue-100 transition-colors shadow"
                   >
                     <div className="flex justify-between items-center">
-                      <span className="text-2xl font-bold">{s.session_code}</span>
+                      <span className="text-2xl font-bold flex items-center gap-2">
+                        <MarketplaceLogo marketplace={s.marketplace} size={24} /> {s.session_code}
+                      </span>
                       <span className="text-blue-600 text-lg font-semibold">CONTINUAR →</span>
                     </div>
                     <ProgressBar picked={s.items_picked} total={s.items_total} />
@@ -278,7 +281,9 @@ export default function SessionSelect() {
                   className="bg-white border-2 border-gray-200 hover:border-blue-400 rounded-2xl p-6 text-left shadow transition-colors"
                 >
                   <div className="flex justify-between items-center">
-                    <span className="text-2xl font-bold">{s.session_code}</span>
+                    <span className="text-2xl font-bold flex items-center gap-2">
+                      <MarketplaceLogo marketplace={s.marketplace} size={24} /> {s.session_code}
+                    </span>
                     <span className="text-gray-400 text-lg">
                       {`${s.items_total} unidades`}
                     </span>
@@ -302,7 +307,9 @@ export default function SessionSelect() {
                     className="bg-green-50 border-2 border-green-300 hover:border-green-500 rounded-2xl p-6 text-left shadow transition-colors"
                   >
                     <div className="flex justify-between items-center">
-                      <span className="text-2xl font-bold text-gray-800">{s.session_code}</span>
+                      <span className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                         {s.marketplace === 'shopee' ? '🟠' : '🟡'} {s.session_code}
+                      </span>
                       <span className="text-green-600 font-semibold text-sm">✓ Concluída — VER →</span>
                     </div>
                     <ProgressBar picked={s.items_picked} total={s.items_total} color="green" />

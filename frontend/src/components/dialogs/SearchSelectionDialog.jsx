@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import MarketplaceLogo from '../MarketplaceLogo'
 
 export default function SearchSelectionDialog({ candidates, onSelect, onCancel }) {
   useEffect(() => {
@@ -43,7 +44,8 @@ export default function SearchSelectionDialog({ candidates, onSelect, onCancel }
                   <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
                     <div className="flex items-center gap-1.5 text-gray-500">
                       <span className="font-bold text-gray-400">LISTA:</span>
-                      <code className="bg-gray-100 px-2 py-0.5 rounded font-mono font-bold text-gray-700">
+                      <code className="bg-gray-100 px-2 py-0.5 rounded font-mono font-bold text-gray-700 flex items-center gap-1.5">
+                        <MarketplaceLogo marketplace={item.marketplace} size={14} />
                         {item.session_code}
                       </code>
                     </div>

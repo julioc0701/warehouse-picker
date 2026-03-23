@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import MarketplaceLogo from '../components/MarketplaceLogo'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 function TrashIcon() {
@@ -115,18 +116,18 @@ function ProgressHero({ sessions }) {
 
 // ── Ranking with Batch Selector ──────────────────────────────────────────────
 // selectedBatch: null = Geral (all-time), or batch id number
-function OperatorRanking({ batches = [] }) {
+function OperatorRanking({ batches = [], marketplace = null }) {
   const [selectedBatch, setSelectedBatch] = useState(null) // null = Geral
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
-    api.getOperatorRanking(selectedBatch)
+    api.getOperatorRanking(selectedBatch, marketplace)
       .then(res => { if (Array.isArray(res)) setData(res) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [selectedBatch])
+  }, [selectedBatch, marketplace])
 
   const activeBatches = batches.filter(b => b.status === 'active')
   const maxValue = data.length > 0 ? Math.max(...data.map(d => d.total || 0), 1) : 1
@@ -392,10 +393,11 @@ function SessionRow({ s, onDeleted }) {
 export default function Supervisor() {
   const navigate = useNavigate()
   const [tab, setTab] = useState('overview')
+  const [marketplaceView, setMarketplaceView] = useState(null)
   const [batches, setBatches] = useState([])
   const [sessions, setSessions] = useState([])
   const [printers, setPrinters] = useState([])
-  const [form, setForm] = useState({ full_date: '' })
+  const [form, setForm] = useState({ full_date: '', marketplace: 'ml' })
   const [files, setFiles] = useState({ pdf: null, txt: null })
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState(null)
@@ -440,7 +442,8 @@ export default function Supervisor() {
         return
       }
       setUploadResult({ ok: true, msg: `✔ Lote "${res.batch_name}" criado com ${res.lists_created} lista(s) e ${res.total_items} SKUs` })
-      setForm({ full_date: '' }); setFiles({ pdf: null, txt: null })
+      setForm({ full_date: '', marketplace: form.marketplace })
+      setFiles({ pdf: null, txt: null })
       refresh()
     } catch (err) { setUploadResult({ ok: false, msg: err.message }) }
     finally { setUploading(false) }
@@ -452,6 +455,7 @@ export default function Supervisor() {
     if (!form.full_date) return alert('Informe a data de carregamento do Full')
     const fd = new FormData()
     fd.append('full_date', form.full_date)
+    fd.append('marketplace', marketplaceView) // Use current operation
     fd.append('picking_pdf', files.pdf)
     if (files.txt) fd.append('labels_txt', files.txt)
     await doUpload(fd)
@@ -491,6 +495,9 @@ export default function Supervisor() {
     ? `${Math.round((Date.now() - lastRefresh) / 1000)}s atrás`
     : 'atualizando...'
 
+  const visibleBatches = batches.filter(b => b.marketplace === marketplaceView)
+  const visibleSessions = sessions.filter(s => s.marketplace === marketplaceView)
+
   const TABS = [
     { id: 'overview',  label: '🏠 Visão Geral' },
     { id: 'lists',     label: '📋 Listas' },
@@ -500,12 +507,65 @@ export default function Supervisor() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {marketplaceView === null && (
+        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-8">
+          <div className="max-w-4xl w-full">
+            <div className="text-center mb-12 relative">
+              <button 
+                onClick={() => navigate('/')} 
+                className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 hover:border-gray-300 hover:text-gray-900 shadow-sm transition-all group"
+                title="Voltar ao início"
+              >
+                <span className="group-hover:-translate-x-1 transition-transform">←</span> Início
+              </button>
+              <h1 className="text-4xl font-black text-gray-900 mb-2">🏭 NVS Supervisor</h1>
+              <p className="text-lg text-gray-500">Selecione a operação para monitorar</p>
+            </div>
+            <div className="flex justify-center items-center gap-24 py-12">
+              <button 
+                onClick={() => setMarketplaceView('ml')} 
+                className="transition-all hover:scale-110 active:scale-95 group"
+                title="Monitorar Mercado Livre"
+              >
+                <MarketplaceLogo marketplace="ml" size={240} className="drop-shadow-sm group-hover:drop-shadow-2xl transition-all" />
+              </button>
+
+              <div className="w-px h-64 bg-gray-200"></div>
+
+              <button 
+                onClick={() => setMarketplaceView('shopee')} 
+                className="transition-all hover:scale-110 active:scale-95 group"
+                title="Monitorar Shopee"
+              >
+                <MarketplaceLogo marketplace="shopee" size={240} className="drop-shadow-sm group-hover:drop-shadow-2xl transition-all" />
+              </button>
+            </div>
+            <div className="mt-12 flex justify-center gap-4">
+              <button onClick={() => navigate('/operators')} className="text-gray-500 hover:text-gray-800 font-semibold px-6 py-2 rounded-full hover:bg-gray-100 transition-colors">
+                👥 Gerenciar Operadores
+              </button>
+              <button onClick={() => navigate('/master-data')} className="text-gray-500 hover:text-gray-800 font-semibold px-6 py-2 rounded-full hover:bg-gray-100 transition-colors">
+                📦 Master Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {marketplaceView !== null && (
+        <>
       {/* ── Top Header ── */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-black text-gray-900 tracking-tight">🏭 NVS Supervisor</h1>
+              <button onClick={() => setMarketplaceView(null)} className="p-2 -ml-2 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors" title="Voltar aos Hub">
+                ←
+              </button>
+              <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                <MarketplaceLogo marketplace={marketplaceView} size={32} />
+                {marketplaceView === 'ml' ? 'Mercado Livre' : 'Shopee'}
+              </h1>
               <span className="text-xs text-gray-400 font-medium bg-gray-100 px-2 py-1 rounded-full">
                 ↻ {timeSince}
               </span>
@@ -545,32 +605,32 @@ export default function Supervisor() {
         {/* ─────────────────── TAB: VISÃO GERAL ─────────────────── */}
         {tab === 'overview' && (
           <div className="flex flex-col gap-6">
-            <ProgressHero sessions={sessions} />
-            <OperatorRanking batches={batches} />
+            <ProgressHero sessions={visibleSessions} />
+            <OperatorRanking batches={visibleBatches} marketplace={marketplaceView} />
           </div>
         )}
 
         {/* ─────────────────── TAB: LISTAS ─────────────────── */}
         {tab === 'lists' && (() => {
-          const batchSessionIds = new Set(batches.flatMap(b => b.sessions.map(s => s.id)))
-          const orphanSessions  = sessions.filter(s => !batchSessionIds.has(s.id))
+          const batchSessionIds = new Set(visibleBatches.flatMap(b => b.sessions.map(s => s.id)))
+          const orphanSessions  = visibleSessions.filter(s => !batchSessionIds.has(s.id))
 
           return (
             <div className="flex flex-col gap-6">
               <div className="flex justify-between items-center">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800">Envios</h2>
+                  <h2 className="text-xl font-bold text-gray-800">Envios ({marketplaceView === 'ml' ? 'Mercado Livre' : 'Shopee'})</h2>
                   <p className="text-sm text-gray-400 mt-0.5">Clique em um lote para ver o detalhe das listas</p>
                 </div>
                 <button onClick={refresh} className="text-sm text-blue-500 hover:underline font-medium">↻ Atualizar</button>
               </div>
 
               {/* Active batch cards grid */}
-              {batches.filter(b => b.status === 'active').length > 0 && (
+              {visibleBatches.filter(b => b.status === 'active').length > 0 && (
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Ativos</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {batches.filter(b => b.status === 'active').map(batch => {
+                    {visibleBatches.filter(b => b.status === 'active').map(batch => {
                       const bPct = batch.pct || 0
                       const barColor = bPct >= 90 ? 'bg-green-500' : bPct >= 50 ? 'bg-blue-500' : 'bg-orange-400'
                       const active    = batch.sessions.filter(s => s.status === 'in_progress').length
@@ -621,11 +681,11 @@ export default function Supervisor() {
               )}
 
               {/* Archived batch cards */}
-              {batches.filter(b => b.status === 'archived').length > 0 && (
+              {visibleBatches.filter(b => b.status === 'archived').length > 0 && (
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Arquivados</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {batches.filter(b => b.status === 'archived').map(batch => {
+                    {visibleBatches.filter(b => b.status === 'archived').map(batch => {
                       const bPct = batch.pct || 0
                       return (
                         <button
@@ -681,10 +741,10 @@ export default function Supervisor() {
               )}
 
               {/* Empty state */}
-              {batches.length === 0 && orphanSessions.length === 0 && (
+              {visibleBatches.length === 0 && orphanSessions.length === 0 && (
                 <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-16 text-center text-gray-400">
                   <p className="text-5xl mb-4">📦</p>
-                  <p className="font-bold text-lg">Nenhum envio carregado ainda.</p>
+                  <p className="font-bold text-lg">Nenhum envio carregado para {marketplaceView === 'ml' ? 'Mercado Livre' : 'Shopee'}.</p>
                   <p className="text-sm mt-1">Vá para <strong>Ferramentas</strong> e faça upload do PDF de picking.</p>
                 </div>
               )}
@@ -735,17 +795,26 @@ export default function Supervisor() {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Marketplace</label>
+                  <div className="py-3 px-4 rounded-xl border-2 border-gray-100 bg-gray-50 font-bold text-gray-800 flex items-center gap-2">
+                    <MarketplaceLogo marketplace={marketplaceView} size={20} />
+                    {marketplaceView === 'ml' ? 'Mercado Livre' : 'Shopee'}
+                  </div>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Picking (PDF)</label>
                   <input type="file" accept=".pdf" className="w-full border-2 border-gray-200 rounded-xl p-3 text-sm"
                     onChange={e => setFiles(f => ({ ...f, pdf: e.target.files[0] }))} required />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Etiquetas (TXT/ZPL) <span className="text-gray-400 font-normal">— opcional</span>
-                  </label>
-                  <input type="file" accept=".txt,.zpl" className="w-full border-2 border-gray-200 rounded-xl p-3 text-sm"
-                    onChange={e => setFiles(f => ({ ...f, txt: e.target.files[0] || null }))} />
-                </div>
+                {form.marketplace === 'ml' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Etiquetas (TXT/ZPL) <span className="text-gray-400 font-normal">— opcional</span>
+                    </label>
+                    <input type="file" accept=".txt,.zpl" className="w-full border-2 border-gray-200 rounded-xl p-3 text-sm"
+                      onChange={e => setFiles(f => ({ ...f, txt: e.target.files[0] || null }))} />
+                  </div>
+                )}
                 <button type="submit" disabled={uploading}
                   className="py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors">
                   {uploading ? 'Processando...' : 'CRIAR LISTAS DE PICKING'}
@@ -888,6 +957,8 @@ export default function Supervisor() {
         )}
 
       </div>
+        </>
+      )}
     </div>
   )
 }

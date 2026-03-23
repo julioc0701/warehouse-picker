@@ -6,8 +6,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
 from models import Session, PickingItem, Label, Barcode, Operator, ScanEvent, Batch
-from parsers.pdf_parser import parse_picking_pdf
-from parsers.zpl_parser import parse_zpl_file, get_ml_barcodes
+from parsers.ml_pdf_parser import parse_picking_pdf
+from parsers.ml_zpl_parser import parse_zpl_file, get_ml_barcodes
 from services import picking as svc
 
 logger = logging.getLogger(__name__)
@@ -110,6 +110,7 @@ def archive_batch(batch_id: int, db: DBSession = Depends(get_db)):
 @router.post("/upload", status_code=201)
 async def upload_session(
     full_date: str = Form(...),           # ISO date: "2026-03-19"
+    marketplace: str = Form("ml"),        # ml ou shopee
     picking_pdf: UploadFile = File(...),
     labels_txt: UploadFile | None = File(None),
     force_archive_batch_id: int | None = Form(None),  # confirmed archiving
@@ -129,32 +130,54 @@ async def upload_session(
 
     loop = asyncio.get_event_loop()
     try:
-        items_data = await asyncio.wait_for(
-            loop.run_in_executor(None, parse_picking_pdf, pdf_bytes),
-            timeout=120.0,
-        )
+        items_data = []
+        labels_data = []
+
+        if marketplace == "shopee":
+            from parsers.shopee_pdf_parser import parse_picking_pdf as shopee_parse
+            from parsers.shopee_zpl_generator import generate_shopee_zpl
+
+            items_data = await asyncio.wait_for(
+                loop.run_in_executor(None, shopee_parse, pdf_bytes),
+                timeout=120.0,
+            )
+
+            for item in items_data:
+                qty = int(item.get("qty_required", 1))
+                for idx in range(qty):
+                    gen_data = {
+                        "product_name": item.get("description", ""),
+                        "seller_sku": item.get("sku", ""),
+                        "barcode": item.get("ml_code", ""),
+                        "whs_skuid": item.get("ml_code", "")
+                    }
+                    zpl = generate_shopee_zpl(gen_data)
+                    labels_data.append({
+                        "sku": item["sku"],
+                        "label_index": idx + 1,
+                        "zpl_content": zpl
+                    })
+        else:
+            items_data = await asyncio.wait_for(
+                loop.run_in_executor(None, parse_picking_pdf, pdf_bytes),
+                timeout=120.0,
+            )
+            if txt_content:
+                labels_data = await asyncio.wait_for(
+                    loop.run_in_executor(None, parse_zpl_file, txt_content),
+                    timeout=60.0,
+                )
     except asyncio.TimeoutError:
         logger.error("Timeout ao processar PDF (%d bytes)", len(pdf_bytes))
         raise HTTPException(408, "PDF demorou mais de 2 min. Verifique o arquivo.")
     except Exception as exc:
-        logger.exception("Erro ao parsear PDF")
-        raise HTTPException(400, f"Erro ao ler PDF: {exc}")
-
-    labels_data = []
-    if txt_content:
-        try:
-            labels_data = await asyncio.wait_for(
-                loop.run_in_executor(None, parse_zpl_file, txt_content),
-                timeout=60.0,
-            )
-        except Exception as exc:
-            logger.exception("Erro ao parsear TXT/ZPL")
-            raise HTTPException(400, f"Erro ao ler etiquetas: {exc}")
+        logger.exception("Erro ao parsear arquivo")
+        raise HTTPException(400, f"Erro ao processar lote: {exc}")
 
     logger.info("Parse concluído: %d itens, %d etiquetas", len(items_data), len(labels_data))
 
     if not items_data:
-        raise HTTPException(400, "Nenhum item encontrado no PDF. Verifique se é uma lista de picking do Mercado Livre.")
+        raise HTTPException(400, f"Nenhum item encontrado no PDF. O marketplace selecionado foi '{marketplace}', verifique o arquivo.")
 
     # ── FIFO: enforce max 3 active batches ───────────────────────────────────
     active_batches = (
@@ -205,6 +228,7 @@ async def upload_session(
         full_date=batch_date,
         seq=seq,
         name=batch_name,
+        marketplace=marketplace,
         status="active",
         created_at=datetime.utcnow(),
     )
@@ -237,7 +261,7 @@ async def upload_session(
 
     for idx, batch_items in enumerate(batches_split, start=1):
         code = f"{prefix}-L{idx:02d}" if total_in_batch > 1 else prefix
-        sess = Session(session_code=code, operator_id=None, status="open", batch_id=new_batch.id)
+        sess = Session(session_code=code, operator_id=None, status="open", batch_id=new_batch.id, marketplace=marketplace)
         db.add(sess)
         db.flush()
 
@@ -320,6 +344,7 @@ def list_sessions(db: DBSession = Depends(get_db)):
             "operator_id": s.operator_id,
             "operator_name": operators.get(s.operator_id) if s.operator_id else None,
             "status": s.status,
+            "marketplace": s.marketplace, # INJETADO
             "created_at": s.created_at.isoformat(),
             "items_total": total,
             "items_picked": picked,
@@ -399,6 +424,7 @@ def find_by_barcode(
                         "session_id": m[1].id,
                         "session_code": m[1].session_code,
                         "operator_name": m[2] or "Disponível",
+                        "marketplace": m[1].marketplace, # INJETADO
                         "qty_picked": m[0].qty_picked,
                         "qty_required": m[0].qty_required,
                         "status": m[0].status
@@ -451,6 +477,7 @@ def find_by_barcode(
                     "description": done_item.description,
                     "operator_id": done_operator.id if done_operator else None,
                     "operator_name": done_operator.name if done_operator else None,
+                    "marketplace": done_session.marketplace, # INJETADO
                 },
             }
         return {"action": "not_in_sessions", "sku": sku, "barcode": barcode}
@@ -466,6 +493,7 @@ def find_by_barcode(
         "description": item.description,
         "operator_id": operator.id if operator else None,
         "operator_name": operator.name if operator else None,
+        "marketplace": session.marketplace, # INJETADO
         "item_id": item.id
     }
 
@@ -565,6 +593,7 @@ def get_all_pending(db: DBSession = Depends(get_db)):
             "session_id": r[1].id,
             "session_code": r[1].session_code,
             "operator_name": r[2] or "Disponível",
+            "marketplace": r[1].marketplace, # INJETADO
             "qty_picked": r[0].qty_picked,
             "qty_required": r[0].qty_required,
             "status": r[0].status
@@ -582,6 +611,7 @@ def get_session(session_id: int, db: DBSession = Depends(get_db)):
         "session_code": s.session_code,
         "operator_id": s.operator_id,
         "status": s.status,
+        "marketplace": s.marketplace, # INJETADO AQUI
         "progress": progress,
         "current_item": svc._item_dict(current) if current else None,
     }

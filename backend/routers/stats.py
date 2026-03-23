@@ -11,6 +11,7 @@ router = APIRouter()
 def get_operator_ranking(
     db: DBSession = Depends(get_db),
     batch_id: int | None = Query(default=None, description="Filter by batch. Omit for all-time Geral ranking."),
+    marketplace: str | None = Query(default=None, description="Filter Geral ranking by marketplace (ml or shopee)."),
 ):
     """
     Returns a ranking of operators by total quantity picked.
@@ -35,6 +36,14 @@ def get_operator_ranking(
             .subquery()
         )
         q = q.filter(ScanEvent.session_id.in_(batch_session_ids))
+    elif marketplace:
+        # Filter all-time ranking by marketplace
+        marketplace_session_ids = (
+            db.query(Session.id)
+            .filter(Session.marketplace == marketplace)
+            .subquery()
+        )
+        q = q.filter(ScanEvent.session_id.in_(marketplace_session_ids))
 
     results = (
         q.group_by(Operator.name)
@@ -54,11 +63,11 @@ def get_operator_ranking(
 def get_batches_for_ranking(db: DBSession = Depends(get_db)):
     """Return list of batches to populate the ranking selector (active + archived)."""
     batches = (
-        db.query(Batch.id, Batch.name, Batch.status, Batch.full_date)
+        db.query(Batch.id, Batch.name, Batch.status, Batch.full_date, Batch.marketplace)
         .order_by(Batch.full_date.desc(), Batch.seq.desc())
         .all()
     )
     return [
-        {"id": b.id, "name": b.name, "status": b.status}
+        {"id": b.id, "name": b.name, "status": b.status, "marketplace": b.marketplace}
         for b in batches
     ]

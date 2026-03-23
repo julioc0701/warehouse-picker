@@ -181,8 +181,19 @@ def init_db():
         """))
         conn.commit()
 
+        batch_cols = [c["name"] for c in insp.get_columns("batches")]
+        if "marketplace" not in batch_cols:
+            conn.execute(text("ALTER TABLE batches ADD COLUMN marketplace VARCHAR(20) NOT NULL DEFAULT 'ml'"))
+            conn.commit()
+            print("--- DATABASE MIGRATION: marketplace added to batches ---")
+
         sess_cols = [c["name"] for c in insp.get_columns("sessions")]
         if "batch_id" not in sess_cols:
             conn.execute(text("ALTER TABLE sessions ADD COLUMN batch_id INTEGER REFERENCES batches(id)"))
             conn.commit()
             print("--- DATABASE MIGRATION: batch_id added to sessions ---")
+
+        if "marketplace" not in sess_cols:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN marketplace VARCHAR(20) NOT NULL DEFAULT 'ml'"))
+            conn.commit()
+            print("--- DATABASE MIGRATION: marketplace added to sessions ---")

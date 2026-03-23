@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import MarketplaceLogo from '../components/MarketplaceLogo'
 
 export default function ShortageReport() {
   const navigate = useNavigate()
@@ -75,8 +76,8 @@ export default function ShortageReport() {
                         {item.description || '—'}
                       </td>
                       <td className="py-3 pr-4">
-                        <span className="font-mono text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full whitespace-nowrap">
-                          {item.session_code || '—'}
+                        <span className="font-mono text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 flex items-center gap-1 py-0.5 rounded-full whitespace-nowrap w-max">
+                          <MarketplaceLogo marketplace={item.marketplace} size={14} /> {item.session_code || '—'}
                         </span>
                       </td>
                       <td className="py-3 pr-4">
