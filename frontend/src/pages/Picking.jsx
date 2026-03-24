@@ -92,7 +92,7 @@ function buildShopeeZplBlock(mlCode, description, sku) {
   }
 
   return (
-    '^XA^CI28^PW640^LL200\n' +
+    '^XA^CI28\n' +
     // ── Etiqueta ESQUERDA (X base 10) ──
     '^LH0,0\n' +
     `^FO10,5^A0N,18,18^FD${nameLine}^FS\n` +
@@ -121,7 +121,7 @@ function buildShopeeZplBlockSingle(mlCode, description, sku) {
   }
 
   return (
-    '^XA^CI28^PW640^LL200\n' +
+    '^XA^CI28\n' +
     '^LH0,0\n' +
     `^FO10,5^A0N,18,18^FD${nameLine}^FS\n` +
     `^FO90,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
@@ -513,6 +513,9 @@ export default function Picking() {
       ]
       fullZpl = blocks.join('\n')
     }
+
+    // Aplica um ajuste fino de -15 dots na esquerda (aprox 1.8mm) para todas as posições (FOx)
+    fullZpl = fullZpl.replace(/\^FO(\d+),/g, (match, x) => `^FO${Math.max(0, parseInt(x, 10) - 15)},`)
 
     try {
       const isHttps = window.location.protocol === 'https:'

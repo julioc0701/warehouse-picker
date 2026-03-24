@@ -19,7 +19,6 @@ def generate_shopee_labels(items_data: list[dict]) -> list[dict]:
             line3 = desc_clean[max_len*2:max_len*3]
                 
             zpl = "^XA\n"
-            zpl += "^PW800\n" # Assuming a default standard width to prevent cutoff
             zpl += "^CI28\n"  # Unicode support
             
             # Title / Desc

@@ -135,7 +135,7 @@ async def upload_session(
 
         if marketplace == "shopee":
             from parsers.shopee_pdf_parser import parse_picking_pdf as shopee_parse
-            from parsers.shopee_zpl_generator import generate_shopee_zpl
+            from parsers.shopee_zpl_generator import generate_shopee_paired_zpl
 
             items_data = await asyncio.wait_for(
                 loop.run_in_executor(None, shopee_parse, pdf_bytes),
@@ -144,17 +144,19 @@ async def upload_session(
 
             for item in items_data:
                 qty = int(item.get("qty_required", 1))
-                for idx in range(qty):
-                    gen_data = {
-                        "product_name": item.get("description", ""),
-                        "seller_sku": item.get("sku", ""),
-                        "barcode": item.get("ml_code", ""),
-                        "whs_skuid": item.get("ml_code", "")
-                    }
-                    zpl = generate_shopee_zpl(gen_data)
+                gen_data = {
+                    "product_name": item.get("description", ""),
+                    "seller_sku": item.get("sku", ""),
+                    "barcode": item.get("ml_code", ""),
+                    "whs_skuid": item.get("ml_code", "")
+                }
+                
+                for idx in range(0, qty, 2):
+                    is_single = (idx + 1 == qty)
+                    zpl = generate_shopee_paired_zpl(gen_data, is_single=is_single)
                     labels_data.append({
                         "sku": item["sku"],
-                        "label_index": idx + 1,
+                        "label_index": (idx // 2) + 1,
                         "zpl_content": zpl
                     })
         else:

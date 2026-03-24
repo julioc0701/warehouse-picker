@@ -531,16 +531,32 @@ def _create_print_job(db: DBSession, session_id: int, sku: str, operator_id: int
     if active:
         return
 
+    item = _get_item(db, session_id, sku)
+    qty_to_print = item.qty_picked if item else 0
+    
+    if qty_to_print <= 0:
+        return
+
+    import math
+    # Todas as etiquetas armazenadas no DB (ML ou Shopee) estão no formato 2-up (2 por bloco/linha)
+    limit_rows = math.ceil(qty_to_print / 2)
+
     labels = (
         db.query(Label)
         .filter(Label.session_id == session_id, Label.sku == sku)
         .order_by(Label.id)
+        .limit(limit_rows)
         .all()
     )
     if not labels:
         return  # sem etiquetas cadastradas para este SKU
 
     zpl = "\n".join(lb.zpl_content for lb in labels if lb.zpl_content)
+    
+    # Aplica um ajuste fino de -15 dots na esquerda (aprox 1.8mm) via software para não afetar hardware state (LH/PW)
+    import re
+    zpl = re.sub(r"\^FO(\d+),", lambda m: f"^FO{max(0, int(m.group(1)) - 15)},", zpl)
+    
     job = PrintJob(
         session_id=session_id,
         sku=sku,
