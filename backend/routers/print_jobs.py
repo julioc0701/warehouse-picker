@@ -24,26 +24,33 @@ router = APIRouter()
 def get_pending_jobs(db: DBSession = Depends(get_db)):
     from datetime import timedelta
 
-    # Crash recovery: se ficou PRINTING por mais de 5 min, volta para PENDING
-    cutoff = datetime.utcnow() - timedelta(minutes=5)
-    stale = (
+    # Crash recovery: se ficou PRINTING por mais de 3 min, volta para PENDING
+    cutoff = datetime.utcnow() - timedelta(minutes=3)
+    stale_count = (
         db.query(PrintJob)
         .filter(PrintJob.status == "PRINTING", PrintJob.created_at < cutoff)
-        .all()
+        .update({"status": "PENDING", "error_msg": "Timeout no agente"}, synchronize_session=False)
     )
-    for job in stale:
-        job.status = "PENDING"
-        job.error_msg = "Resetado por timeout (agente caiu?)"
-    if stale:
+    if stale_count:
         db.commit()
 
     jobs = (
         db.query(PrintJob)
         .filter(PrintJob.status == "PENDING")
         .order_by(PrintJob.created_at)
+        .limit(20)  # Evita carregar milhares de uma vez
         .all()
     )
-    return [_job_dict(j) for j in jobs]
+    # Retorna o dicionário LITE (sem o zpl_content pesado)
+    return [_job_dict_lite(j) for j in jobs]
+
+
+@router.get("/{job_id}")
+def get_job_by_id(job_id: int, db: DBSession = Depends(get_db)):
+    job = db.query(PrintJob).filter(PrintJob.id == job_id).first()
+    if not job:
+        raise HTTPException(404, "Job não encontrado")
+    return _job_dict(job)
 
 
 # ---------------------------------------------------------------------------
@@ -58,11 +65,15 @@ class UpdateJobBody(BaseModel):
 
 @router.patch("/{job_id}")
 def update_job(job_id: int, body: UpdateJobBody, db: DBSession = Depends(get_db)):
-    job = db.query(PrintJob).filter(PrintJob.id == job_id).first()
+    job = db.query(PrintJob).filter(PrintJob.id == job_id).with_for_update().first()
     if not job:
         raise HTTPException(404, "Job não encontrado")
 
-    valid = {"PRINTING", "PRINTED", "ERROR"}
+    # Regras de transição de status (Simula um lock / reserva de job)
+    if body.status == "PRINTING" and job.status != "PENDING":
+        raise HTTPException(400, f"Job {job_id} ja esta sendo processado ou concluido (status: {job.status})")
+
+    valid = {"PRINTING", "PRINTED", "ERROR", "PENDING"}
     if body.status not in valid:
         raise HTTPException(400, f"Status inválido. Use: {valid}")
 
@@ -161,12 +172,17 @@ def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 def _job_dict(job: PrintJob) -> dict:
+    d = _job_dict_lite(job)
+    d["zpl_content"] = job.zpl_content
+    return d
+
+
+def _job_dict_lite(job: PrintJob) -> dict:
     return {
         "id": job.id,
         "session_id": job.session_id,
         "sku": job.sku,
         "status": job.status,
-        "zpl_content": job.zpl_content,
         "printer_name": job.printer_name,
         "error_msg": job.error_msg,
         "created_at": job.created_at.isoformat() if job.created_at else None,

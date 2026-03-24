@@ -449,6 +449,7 @@ def _polling_loop() -> None:
 
     while True:
         try:
+            # Step 1: Get list of pending jobs (metadata only, no ZPL)
             jobs = _backend_request("GET", "/print-jobs/pending")
             failures = 0  # reset ao conseguir comunicar
 
@@ -463,18 +464,32 @@ def _polling_loop() -> None:
 
             for job in jobs:
                 job_id = job["id"]
-                zpl    = job.get("zpl_content", "")
                 sku    = job.get("sku", "?")
+
+                # Step 2: Try to RESERVE the job (PATCH status to PRINTING)
+                # This ensures only one agent handles this job.
+                try:
+                    _backend_request("PATCH", f"/print-jobs/{job_id}", {"status": "PRINTING"})
+                except urllib.error.HTTPError as e:
+                    if e.code == 400:
+                        # Job já foi pego por outro operador entre o GET e o PATCH
+                        continue
+                    raise e
+                except Exception as e:
+                    print(f"  [POLL] Erro ao reservar job {job_id}: {e}")
+                    continue
+
+                # Step 3: Fetch the full job details (including ZPL) now that we own it
+                try:
+                    full_job = _backend_request("GET", f"/print-jobs/{job_id}")
+                    zpl = full_job.get("zpl_content", "")
+                except Exception as e:
+                    print(f"  [POLL] Erro ao baixar ZPL do job {job_id}: {e}")
+                    _backend_request("PATCH", f"/print-jobs/{job_id}", {"status": "PENDING", "error_msg": "Falha no download"})
+                    continue
 
                 if not zpl:
                     _backend_request("PATCH", f"/print-jobs/{job_id}", {"status": "ERROR", "error_msg": "ZPL vazio"})
-                    continue
-
-                # Tenta reservar o job
-                try:
-                    _backend_request("PATCH", f"/print-jobs/{job_id}", {"status": "PRINTING"})
-                except Exception as e:
-                    print(f"  [POLL] Nao foi possivel reservar job {job_id}: {e}")
                     continue
 
                 print(f"  [POLL] Imprimindo job {job_id} — SKU: {sku}")

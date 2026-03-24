@@ -2,6 +2,8 @@
 from datetime import datetime
 from sqlalchemy.orm import Session as DBSession
 from models import PickingItem, Barcode, ScanEvent, Session, Label, PrintJob, Operator
+import math
+import re
 
 
 def get_current_item(db: DBSession, session_id: int) -> PickingItem | None:
@@ -537,7 +539,6 @@ def _create_print_job(db: DBSession, session_id: int, sku: str, operator_id: int
     if qty_to_print <= 0:
         return
 
-    import math
     # Todas as etiquetas armazenadas no DB (ML ou Shopee) estão no formato 2-up (2 por bloco/linha)
     limit_rows = math.ceil(qty_to_print / 2)
 
@@ -554,7 +555,6 @@ def _create_print_job(db: DBSession, session_id: int, sku: str, operator_id: int
     zpl = "\n".join(lb.zpl_content for lb in labels if lb.zpl_content)
     
     # Aplica um ajuste fino de -15 dots na esquerda (aprox 1.8mm) via software para não afetar hardware state (LH/PW)
-    import re
     zpl = re.sub(r"\^FO(\d+),", lambda m: f"^FO{max(0, int(m.group(1)) - 15)},", zpl)
     
     job = PrintJob(
