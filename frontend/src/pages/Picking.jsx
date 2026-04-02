@@ -95,19 +95,19 @@ function buildShopeeZplBlock(mlCode, description, sku) {
     '^XA^CI28\n' +
     // ── Etiqueta ESQUERDA (X base 10) ──
     '^LH0,0\n' +
-    `^FO10,5^A0N,18,18^FD${nameLine}^FS\n` +
-    `^FO90,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
-    `^FO10,135^A0N,18,18^FDseller sku: ${sku}^FS\n` +
-    `^FO10,155^A0N,18,18^FDbarcode: ${mlCode}^FS\n` +
-    `^FO10,175^A0N,18,18^FDwhs skuid: ${mlCode}^FS\n` +
-    // ── Etiqueta DIREITA (X base 330) ──
+    `^FO10,5^A0N,16,16^FD${nameLine}^FS\n` +
+    `^FO90,25^BQN,2,3^FDQA,${mlCode}^FS\n` +
+    `^FO10,125^A0N,16,16^FDseller sku: ${sku}^FS\n` +
+    `^FO10,145^A0N,16,16^FDbarcode: ${mlCode}^FS\n` +
+    `^FO10,165^A0N,16,16^FDwhs skuid: ${mlCode}^FS\n` +
+    // ── Etiqueta DIREITA (X base 350 ajustado para nao cortar) ──
     '^CI28\n' +
     '^LH0,0\n' +
-    `^FO330,5^A0N,18,18^FD${nameLine}^FS\n` +
-    `^FO410,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
-    `^FO330,135^A0N,18,18^FDseller sku: ${sku}^FS\n` +
-    `^FO330,155^A0N,18,18^FDbarcode: ${mlCode}^FS\n` +
-    `^FO330,175^A0N,18,18^FDwhs skuid: ${mlCode}^FS\n` +
+    `^FO350,5^A0N,16,16^FD${nameLine}^FS\n` +
+    `^FO430,25^BQN,2,3^FDQA,${mlCode}^FS\n` +
+    `^FO350,125^A0N,16,16^FDseller sku: ${sku}^FS\n` +
+    `^FO350,145^A0N,16,16^FDbarcode: ${mlCode}^FS\n` +
+    `^FO350,165^A0N,16,16^FDwhs skuid: ${mlCode}^FS\n` +
     '^XZ'
   )
 }
@@ -123,11 +123,11 @@ function buildShopeeZplBlockSingle(mlCode, description, sku) {
   return (
     '^XA^CI28\n' +
     '^LH0,0\n' +
-    `^FO10,5^A0N,18,18^FD${nameLine}^FS\n` +
-    `^FO90,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
-    `^FO10,135^A0N,18,18^FDseller sku: ${sku}^FS\n` +
-    `^FO10,155^A0N,18,18^FDbarcode: ${mlCode}^FS\n` +
-    `^FO10,175^A0N,18,18^FDwhs skuid: ${mlCode}^FS\n` +
+    `^FO10,5^A0N,16,16^FD${nameLine}^FS\n` +
+    `^FO90,25^BQN,2,3^FDQA,${mlCode}^FS\n` +
+    `^FO10,125^A0N,16,16^FDseller sku: ${sku}^FS\n` +
+    `^FO10,145^A0N,16,16^FDbarcode: ${mlCode}^FS\n` +
+    `^FO10,165^A0N,16,16^FDwhs skuid: ${mlCode}^FS\n` +
     '^XZ'
   )
 }
@@ -163,6 +163,7 @@ export default function Picking() {
   const [loading, setLoading] = useState(true)
   const [allItems, setAllItems] = useState([])
   const [scanMode, setScanMode] = useState('unit') // 'unit' | 'box'
+  const [fixingSpooler, setFixingSpooler] = useState(false)
 
   const inputRef = useRef(null)
 
@@ -588,6 +589,26 @@ export default function Picking() {
     }
   }
 
+  async function handleFixSpooler() {
+    if (!window.confirm('Isso irá reiniciar o serviço de impressão do Windows e limpar a fila. Deseja continuar?')) return
+    setFixingSpooler(true)
+    try {
+      const res = await fetch(`${PRINT_AGENT_BASE}/fix-spooler`, { method: 'GET' })
+      const data = await res.json()
+      if (data.status === 'ok') {
+        alert('Sucesso: Spooler reiniciado e fila limpa. Tente imprimir novamente.')
+        setPrintStatus(null) // Reset status to allow retry
+      } else {
+        alert('Erro ao limpar spooler: ' + data.message)
+      }
+    } catch (err) {
+      alert('Não foi possível comunicar com o agente. Verifique se o ZebraAgent está aberto.')
+    } finally {
+      setFixingSpooler(false)
+      focusInput()
+    }
+  }
+
   async function onSelectSearchResult(candidate) {
     setDialog(null)
     const isInSession = allItems.some(i => i.sku === candidate.sku)
@@ -811,6 +832,14 @@ export default function Picking() {
                     >
                       🔁 Reimprimir
                     </button>
+                    <button
+                      onClick={handleFixSpooler}
+                      disabled={fixingSpooler}
+                      title="Limpar fila de impressão se travou"
+                      className="px-3 py-3 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-600 text-sm font-medium transition-colors whitespace-nowrap border border-orange-200"
+                    >
+                      {fixingSpooler ? '⏳ Limpando...' : '❓ Não imprimiu?'}
+                    </button>
                   </div>
                 )}
 
@@ -826,6 +855,13 @@ export default function Picking() {
                       className="py-3 rounded-xl bg-red-500 text-white text-base font-bold hover:bg-red-600 active:bg-red-700 transition-colors"
                     >
                       🔄 Tentar novamente
+                    </button>
+                    <button
+                      onClick={handleFixSpooler}
+                      disabled={fixingSpooler}
+                      className="py-3 rounded-xl bg-orange-100 text-orange-700 text-sm font-bold hover:bg-orange-200 transition-colors border border-orange-300"
+                    >
+                      {fixingSpooler ? '⏳ Limpando Spooler...' : '🛠️ Limpar Fila de Impressão (Fila Travada)'}
                     </button>
                   </div>
                 )}

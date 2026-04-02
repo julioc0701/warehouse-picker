@@ -554,8 +554,13 @@ def _create_print_job(db: DBSession, session_id: int, sku: str, operator_id: int
 
     zpl = "\n".join(lb.zpl_content for lb in labels if lb.zpl_content)
     
-    # Aplica um ajuste fino de -15 dots na esquerda (aprox 1.8mm) via software para não afetar hardware state (LH/PW)
-    zpl = re.sub(r"\^FO(\d+),", lambda m: f"^FO{max(0, int(m.group(1)) - 15)},", zpl)
+    # ── Coordinate Adjustment ────────────────────────────────────────────────
+    # Só aplicamos o ajuste de -15 dots (aprox 1.8mm) para Mercado Livre,
+    # caso contrário as etiquetas da Shopee (já calibradas em FO10) perdem o alinhamento
+    # ou são cortadas em FO0.
+    sess = db.query(Session).filter(Session.id == session_id).first()
+    if sess and sess.marketplace == "ml":
+        zpl = re.sub(r"\^FO(\d+),", lambda m: f"^FO{max(0, int(m.group(1)) - 15)},", zpl)
     
     job = PrintJob(
         session_id=session_id,

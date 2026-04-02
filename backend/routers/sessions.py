@@ -220,81 +220,90 @@ async def upload_session(
     # ── Create new Batch ─────────────────────────────────────────────────────
     existing_same_date = (
         db.query(Batch)
-        .filter(Batch.full_date == batch_date, Batch.status == "active")
+        .filter(Batch.full_date == batch_date)  # Count ALL batches (active + archived) to avoid code collision
         .count()
     )
-    seq = existing_same_date + 1
-    date_str = batch_date.strftime("%d/%m/%Y")
-    batch_name = date_str if seq == 1 else f"{date_str} · nº{seq}"
-    new_batch = Batch(
-        full_date=batch_date,
-        seq=seq,
-        name=batch_name,
-        marketplace=marketplace,
-        status="active",
-        created_at=datetime.utcnow(),
-    )
-    db.add(new_batch)
-    db.flush()
-
-    # ── Build session code prefix ─────────────────────────────────────────────
-    prefix = _date_to_prefix(batch_date)
-    if seq > 1:
-        prefix = f"{prefix}-{chr(64 + seq)}"  # -B, -C, ...
-
-    # ── Split PDF into picking lists ─────────────────────────────────────────
-    batches_split = split_into_batches(items_data, max_units=1000)
-
-    added_barcodes: set[tuple[str, str]] = set(
-        (r[0], r[1]) for r in db.query(Barcode.barcode, Barcode.sku).all()
-    )
-
-    def add_barcode_safe(barcode: str, sku: str, is_primary: bool):
-        if barcode and (barcode, sku) not in added_barcodes:
-            db.add(Barcode(barcode=barcode, sku=sku, is_primary=is_primary))
-            added_barcodes.add((barcode, sku))
-
-    sku_labels: dict[str, list] = {}
-    for lbl in labels_data:
-        sku_labels.setdefault(lbl["sku"], []).append(lbl)
-
-    created_sessions = []
-    total_in_batch = len(batches_split)
-
-    for idx, batch_items in enumerate(batches_split, start=1):
-        code = f"{prefix}-L{idx:02d}" if total_in_batch > 1 else prefix
-        sess = Session(session_code=code, operator_id=None, status="open", batch_id=new_batch.id, marketplace=marketplace)
-        db.add(sess)
+    
+    try:
+        seq = existing_same_date + 1
+        date_str = batch_date.strftime("%d/%m/%Y")
+        batch_name = date_str if seq == 1 else f"{date_str} · nº{seq}"
+        new_batch = Batch(
+            full_date=batch_date,
+            seq=seq,
+            name=batch_name,
+            marketplace=marketplace,
+            status="active",
+            created_at=datetime.utcnow(),
+        )
+        db.add(new_batch)
         db.flush()
 
-        for item in batch_items:
-            pi = PickingItem(
-                session_id=sess.id,
-                sku=item["sku"],
-                ml_code=item.get("ml_code"),
-                description=item.get("description", ""),
-                qty_required=item["qty_required"],
-            )
-            db.add(pi)
-            add_barcode_safe(item["sku"], item["sku"], True)
-            ean = item.get("ean")
-            if ean:
-                add_barcode_safe(ean, item["sku"], False)
+        # ── Build session code prefix ─────────────────────────────────────────────
+        prefix = _date_to_prefix(batch_date)
+        if seq > 1:
+            prefix = f"{prefix}-{chr(64 + seq)}"  # -B, -C, ...
 
-            for lbl in sku_labels.get(item["sku"], []):
-                db.add(Label(
+        # ── Split PDF into picking lists ─────────────────────────────────────────
+        batches_split = split_into_batches(items_data, max_units=1000)
+
+        added_barcodes: set[tuple[str, str]] = set(
+            (r[0], r[1]) for r in db.query(Barcode.barcode, Barcode.sku).all()
+        )
+
+        def add_barcode_safe(barcode: str, sku: str, is_primary: bool):
+            if barcode and (barcode, sku) not in added_barcodes:
+                db.add(Barcode(barcode=barcode, sku=sku, is_primary=is_primary))
+                added_barcodes.add((barcode, sku))
+
+        sku_labels: dict[str, list] = {}
+        for lbl in labels_data:
+            sku_labels.setdefault(lbl["sku"], []).append(lbl)
+
+        created_sessions = []
+        total_in_batch = len(batches_split)
+
+        for idx, batch_items in enumerate(batches_split, start=1):
+            code = f"{prefix}-L{idx:02d}" if total_in_batch > 1 else prefix
+            sess = Session(session_code=code, operator_id=None, status="open", batch_id=new_batch.id, marketplace=marketplace)
+            db.add(sess)
+            db.flush()
+
+            for item in batch_items:
+                pi = PickingItem(
                     session_id=sess.id,
-                    sku=lbl["sku"],
-                    label_index=lbl["label_index"],
-                    zpl_content=lbl["zpl_content"],
-                ))
+                    sku=item["sku"],
+                    ml_code=item.get("ml_code"),
+                    description=item.get("description", ""),
+                    qty_required=item["qty_required"],
+                )
+                db.add(pi)
+                add_barcode_safe(item["sku"], item["sku"], True)
+                ean = item.get("ean")
+                if ean:
+                    add_barcode_safe(ean, item["sku"], False)
 
-        created_sessions.append({"session_id": sess.id, "session_code": code, "items": len(batch_items)})
+                for lbl in sku_labels.get(item["sku"], []):
+                    db.add(Label(
+                        session_id=sess.id,
+                        sku=lbl["sku"],
+                        label_index=lbl["label_index"],
+                        zpl_content=lbl["zpl_content"],
+                    ))
 
-    for entry in get_ml_barcodes(txt_content):
-        add_barcode_safe(entry["ml_code"], entry["sku"], False)
+            created_sessions.append({"session_id": sess.id, "session_code": code, "items": len(batch_items)})
 
-    db.commit()
+        for entry in get_ml_barcodes(txt_content):
+            add_barcode_safe(entry["ml_code"], entry["sku"], False)
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.exception("Erro ao salvar lote no banco de dados")
+        if "UNIQUE constraint failed" in str(e) and "session_code" in str(e):
+            raise HTTPException(400, "Conflito de código de lista. Este lote já foi carregado hoje (mesmo se arquivado). Tente com outra data ou altere o lote anterior.")
+        raise HTTPException(500, f"Erro interno ao salvar dados: {str(e)}")
+
     return {
         "status": "ok",
         "batch_id": new_batch.id,
@@ -438,6 +447,7 @@ def find_by_barcode(
         sku = top_item.sku
 
     # 3. Find all items with this SKU in non-completed sessions, best first
+    from sqlalchemy import case
     rows = (
         db.query(PickingItem, Session, Operator)
         .join(Session, Session.id == PickingItem.session_id)
@@ -446,7 +456,10 @@ def find_by_barcode(
             PickingItem.sku == sku,
             Session.status != "completed",
         )
-        .order_by(PickingItem.qty_required.desc())
+        .order_by(
+            case((PickingItem.status.in_(["complete", "partial", "out_of_stock"]), 1), else_=0).asc(),
+            PickingItem.qty_required.desc()
+        )
         .all()
     )
 
@@ -771,8 +784,7 @@ def reopen_session(session_id: int, db: DBSession = Depends(get_db)):
 @router.delete("/{session_id}", status_code=200)
 def delete_session(session_id: int, db: DBSession = Depends(get_db)):
     sess = _session_or_404(db, session_id)
-    if sess.status == "in_progress":
-        raise HTTPException(409, "Não é possível excluir uma lista em andamento")
+    # Allow deleting in_progress sessions as requested by master user
     # Delete children in FK order
     item_ids = [i.id for i in db.query(PickingItem.id).filter(PickingItem.session_id == session_id).all()]
     if item_ids:

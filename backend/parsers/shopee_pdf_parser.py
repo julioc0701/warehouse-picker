@@ -37,9 +37,12 @@ def parse_picking_pdf(pdf_bytes: bytes) -> list[dict]:
                     continue
                 if "vendedor" in text_start or "amarzém" in text_start or "nnoo.." in text_start or "no." in text_start:
                     continue
+                if "poder" in text_start or "inseri" in text_start or "mensagem" in text_start or "comprador" in text_start:
+                    continue
 
                 col_left = [w for w in line if w['x0'] < 190]
                 left_text = " ".join([w['text'] for w in col_left])
+
                 
                 # Check if this line contains a shopee ID part 1 (e.g. 123456789_1)
                 is_new_item = False
@@ -88,7 +91,9 @@ def parse_picking_pdf(pdf_bytes: bytes) -> list[dict]:
                 elif current_item:
                     # Continuation
                     if col_seller:
-                        current_item["sku"] += "".join([w['text'] for w in col_seller])
+                        append_sku_text = "".join([w['text'] for w in col_seller])
+                        if "poder" not in append_sku_text.lower() and "inseri" not in append_sku_text.lower():
+                            current_item["sku"] += append_sku_text
                     if col_shopee_id:
                         current_item["ml_code"] += "".join([w['text'] for w in col_shopee_id])
                     if col_desc:

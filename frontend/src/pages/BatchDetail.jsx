@@ -49,10 +49,6 @@ function SessionRow({ s, onDeleted }) {
   }
 
   async function handleDelete() {
-    if (s.status === 'in_progress') {
-      setErrMsg('Não é possível excluir uma lista em andamento.')
-      setTimeout(() => setErrMsg(null), 3000); return
-    }
     setConfirm(true)
   }
 
@@ -98,7 +94,7 @@ function SessionRow({ s, onDeleted }) {
         )}
         {!confirm ? (
           <button onClick={handleDelete} title="Excluir lista"
-            className={`p-1.5 rounded-lg transition-colors ${s.status === 'in_progress' ? 'text-gray-300 cursor-not-allowed' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}>
+            className="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-red-500 hover:bg-red-50">
             <TrashIcon />
           </button>
         ) : (
