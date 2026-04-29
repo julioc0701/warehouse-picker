@@ -1,0 +1,78 @@
+INFO:     Will watch for changes in these directories: ['/Users/julio/Documents/Antigra/warehouse-picker/backend']
+INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)
+INFO:     Started reloader process [18435] using WatchFiles
+INFO:     Started server process [18445]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+--- DATABASE DEBUG: URL is 'sqlite:///../data/code-isolated.db' ---
+--- DATABASE DEBUG: Final target path is '/Users/julio/Documents/Antigra/warehouse-picker/data/code-isolated.db' ---
+--- DATABASE DEBUG: FORCE_SEED=False ---
+--- DATABASE DEBUG: Target file exists. Size: 10199040 bytes ---
+--- DATABASE DEBUG: Found 391 barcodes, 26 sessions ---
+--- DATABASE SAFETY: Production data detected. Skipping seed to protect data. ---
+--- DATABASE DEBUG: Data exists (10199040 bytes). skipping seed. ---
+--- DATA VERIFICATION ---
+--- Total Operators: 8 ---
+--- Total Sessions: 26 ---
+--- Total Barcodes: 391 ---
+-------------------------
+INFO:     127.0.0.1:53766 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53822 - "GET /api/printers/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53823 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53820 - "GET /api/sessions/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53845 - "GET /api/printers/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53848 - "GET /api/printers/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53846 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53844 - "GET /api/sessions/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53850 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53852 - "GET /api/sessions/ HTTP/1.1" 200 OK
+/Users/julio/Documents/Antigra/warehouse-picker/backend/routers/stats.py:46: SAWarning: Coercing Subquery object into a select() for use in IN(); please pass a select() construct explicitly
+  q = q.filter(ScanEvent.session_id.in_(marketplace_session_ids))
+INFO:     127.0.0.1:53859 - "GET /api/stats/ranking?marketplace=shopee HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53861 - "GET /api/stats/ranking?marketplace=shopee HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53883 - "GET /api/stats/ranking?marketplace=shopee HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53887 - "GET /api/stats/ranking?marketplace=shopee HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53891 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53895 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53910 - "GET /api/printers/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53913 - "GET /api/printers/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53911 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53908 - "GET /api/sessions/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53917 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53921 - "GET /api/sessions/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53925 - "GET /api/stats/ranking?marketplace=ml HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53929 - "GET /api/stats/ranking?marketplace=ml HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53933 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53937 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53950 - "GET /api/printers/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53955 - "GET /api/printers/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53951 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53948 - "GET /api/sessions/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53959 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53963 - "GET /api/sessions/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53967 - "GET /api/stats/ranking?marketplace=shopee HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53971 - "GET /api/stats/ranking?marketplace=shopee HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53994 - "DELETE /api/sessions/batches/8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53987 - "DELETE /api/sessions/batches/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53992 - "DELETE /api/sessions/batches/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53995 - "DELETE /api/sessions/batches/9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53990 - "DELETE /api/sessions/batches/5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53999 - "DELETE /api/sessions/batches/10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53988 - "DELETE /api/sessions/batches/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54003 - "DELETE /api/sessions/batches/11 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54011 - "DELETE /api/sessions/batches/13 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54007 - "DELETE /api/sessions/batches/12 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54015 - "DELETE /api/sessions/batches/14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54026 - "GET /api/printers/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54027 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54024 - "GET /api/sessions/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54032 - "POST /api/sessions/upload HTTP/1.1" 201 Created
+INFO:     127.0.0.1:54043 - "GET /api/printers/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54044 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54041 - "GET /api/sessions/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54048 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54052 - "GET /api/sessions/batches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54063 - "GET /api/sessions/80/items HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54067 - "GET /api/sessions/81/items HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54071 - "GET /api/sessions/82/items HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54075 - "GET /api/sessions/83/items HTTP/1.1" 200 OK

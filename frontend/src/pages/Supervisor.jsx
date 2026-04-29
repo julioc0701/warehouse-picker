@@ -404,6 +404,8 @@ export default function Supervisor() {
   const [importingExcel, setImportingExcel] = useState(false)
   const [agentInfo, setAgentInfo] = useState(null)
   const [lastRefresh, setLastRefresh] = useState(null)
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false)
+  const [deletingAll, setDeletingAll] = useState(false)
   const agentCheckRef = useRef(false)
   const refreshIntervalRef = useRef(null)
 
@@ -427,6 +429,21 @@ export default function Supervisor() {
       setSessions(s); setPrinters(p); setBatches(b)
       setLastRefresh(new Date())
     })
+  }
+
+  async function handleDeleteAllBatches() {
+    const toDelete = batches.filter(b => b.marketplace === marketplaceView)
+    if (toDelete.length === 0) { setDeleteAllConfirm(false); return }
+    setDeletingAll(true)
+    try {
+      await Promise.all(toDelete.map(b => api.deleteBatch(b.id)))
+      refresh()
+      setDeleteAllConfirm(false)
+    } catch (err) {
+      alert('Erro ao apagar: ' + (err.message || err))
+    } finally {
+      setDeletingAll(false)
+    }
   }
 
   async function doUpload(fd) {
@@ -618,7 +635,16 @@ export default function Supervisor() {
                   <h2 className="text-xl font-bold text-gray-800">Envios ({marketplaceView === 'ml' ? 'Mercado Livre' : 'Shopee'})</h2>
                   <p className="text-sm text-gray-400 mt-0.5">Clique em um lote para ver o detalhe das listas</p>
                 </div>
-                <button onClick={refresh} className="text-sm text-blue-500 hover:underline font-medium">↻ Atualizar</button>
+                <div className="flex items-center gap-3">
+                  <button onClick={refresh} className="text-sm text-blue-500 hover:underline font-medium">↻ Atualizar</button>
+                  <button
+                    onClick={() => setDeleteAllConfirm(true)}
+                    title="Apagar todas as listas"
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
 
               {/* Active batch cards grid */}
@@ -955,6 +981,41 @@ export default function Supervisor() {
       </div>
         </>
       )}
+
+      {/* Delete all batches confirmation modal */}
+      {deleteAllConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-3xl">🗑️</span>
+              <div>
+                <p className="font-bold text-gray-900 text-lg">Apagar todas as listas?</p>
+                <p className="text-sm text-gray-500 mt-0.5">{visibleBatches.length} lote(s) serão apagados permanentemente</p>
+              </div>
+            </div>
+            <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3 mb-5">
+              ⚠️ Esta ação não pode ser desfeita. Todas as sessões, itens e histórico de bipagem serão removidos.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteAllConfirm(false)}
+                disabled={deletingAll}
+                className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              >
+                Não, cancelar
+              </button>
+              <button
+                onClick={handleDeleteAllBatches}
+                disabled={deletingAll}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 disabled:opacity-50 transition-colors"
+              >
+                {deletingAll ? 'Apagando...' : 'Sim, apagar tudo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

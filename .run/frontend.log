@@ -1,0 +1,20 @@
+
+> warehouse-picker@1.0.0 dev
+> vite --host 127.0.0.1 --port 5175
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+  VITE v5.4.21  ready in 279 ms
+
+  ➜  Local:   http://127.0.0.1:5175/
+(node:15838) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/julio/Documents/Antigra/warehouse-picker/frontend/postcss.config.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/julio/Documents/Antigra/warehouse-picker/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+15:14:29 [vite] hmr update /src/index.css, /src/pages/SessionSelect.jsx, /src/pages/OperatorsManagement.jsx, /src/pages/Login.jsx, /src/pages/SessionItems.jsx, /src/pages/Picking.jsx, /src/pages/MasterData.jsx, /src/pages/BatchDetail.jsx, /src/pages/ShortageReport.jsx, /src/pages/Supervisor.jsx
+15:14:36 [vite] hmr update /src/pages/Supervisor.jsx, /src/index.css
+15:14:46 [vite] hmr update /src/pages/Supervisor.jsx, /src/index.css
+15:14:52 [vite] hmr update /src/pages/Supervisor.jsx, /src/index.css
+15:15:14 [vite] hmr update /src/pages/Supervisor.jsx, /src/index.css
+15:18:41 [vite] hmr update /src/pages/Supervisor.jsx, /src/index.css
+15:22:12 [vite] hmr update /src/pages/Supervisor.jsx, /src/index.css
